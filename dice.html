@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Dice Lab · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  /* Layout: setup, dice machine and roll buttons on the left; stats and the live chart on the right;
+     the "Why?" card spans the bottom. One column on phones. */
+  .nl-app { grid-template-columns: minmax(0, 1fr); }
+  .lab { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
+  .left, .right { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; }
+  .nl-card { min-width: 0; }
+  @media (min-width: 900px) {
+    .lab { grid-template-columns: minmax(0, 430px) minmax(0, 1fr); align-items: start; column-gap: 24px; }
+    .why { grid-column: 1 / -1; }
+  }
+  h2 { font-size: 22px; }
+
+  /* ---------- setup ---------- */
+  .setup { display: grid; gap: 10px; }
+  .kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .kinds .nl-btn { display: grid; justify-items: center; gap: 3px; min-height: 70px; padding: 7px 4px 6px; font-size: 16px; }
+  .kinds .die { width: 34px; height: 34px; }
+  .counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .counts .nl-btn { min-height: 52px; padding: 8px 6px; font-size: 17px; }
+  .counts .nl-btn .nl-digits { font-size: 22px; margin-right: 3px; }
+  /* selected setup/pick buttons: dark panel + yellow ring, so colored digits stay readable in both themes */
+  .kinds .nl-btn[aria-pressed="true"], .counts .nl-btn[aria-pressed="true"], .pick-grid .nl-btn[aria-pressed="true"] {
+    background: var(--machine); color: var(--window-fg); border-color: var(--button); box-shadow: 0 3px 0 var(--button-edge);
+  }
+
+  /* ---------- dice machine ---------- */
+  .tray { display: grid; justify-items: center; gap: 10px; padding: 16px 10px 14px; min-height: 196px; align-content: center; }
+  .dice { display: flex; justify-content: center; gap: 12px; }
+  .die { width: 104px; height: 104px; flex: none; }
+  .dice[data-n="2"] .die { width: 96px; height: 96px; }
+  .dice[data-n="3"] .die { width: 82px; height: 82px; }
+  .die svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .dice .die svg { filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.4)); }
+  .die .body { fill: url(#dieFill); stroke: #9fadf2; stroke-width: 3; stroke-linejoin: round; }
+  .die .facet { fill: none; stroke: rgba(170, 184, 255, 0.32); stroke-width: 2; stroke-linejoin: round; }
+  .die .dn { font-family: var(--font-display); font-weight: 700; paint-order: stroke; stroke: rgba(5, 8, 25, 0.55); stroke-width: 3px; }
+  .die .pip { stroke: rgba(5, 8, 25, 0.45); stroke-width: 1.5; }
+  .die .coin { fill: #ffc93c; stroke: #d99a12; stroke-width: 4; }
+  .die .coin-ring { fill: none; stroke: rgba(120, 76, 0, 0.35); stroke-width: 2.5; stroke-dasharray: 3 4; }
+  .die .coin-t { font-family: var(--font-display); font-weight: 700; fill: #6b4600; }
+  .die.tumble { animation: tumble 0.32s ease-in-out infinite; animation-delay: calc(var(--i) * -0.11s); }
+  .die.landed, .pop { animation: land 0.3s ease-out; }
+  @keyframes tumble {
+    0% { transform: rotate(0) translateY(0); }
+    25% { transform: rotate(-16deg) translateY(-10px); }
+    50% { transform: rotate(9deg) translateY(2px); }
+    75% { transform: rotate(-7deg) translateY(-5px); }
+    100% { transform: rotate(0) translateY(0); }
+  }
+  @keyframes land { 0% { transform: scale(1.14); } 100% { transform: scale(1); } }
+
+  .result { display: grid; justify-items: center; gap: 2px; text-align: center; }
+  .tot-lab { font-weight: 800; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(233, 237, 255, 0.68); }
+  .tot-line { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; gap: 0 10px; }
+  .eq { font-size: 26px; color: rgba(233, 237, 255, 0.75); }
+  .tot { font-size: 62px; line-height: 1; }
+  .tot.word { font-size: 46px; color: #ffd765; }
+  .tot small { font-size: 30px; color: var(--window-fg); }
+  .status { margin: 10px 4px 0; min-height: 40px; text-align: center; font-weight: 700; font-size: 15px; color: rgba(233, 237, 255, 0.86); text-wrap: balance; }
+  .status b { color: #ffd765; }
+
+  /* ---------- buttons ---------- */
+  #roll { width: 100%; }
+  .fast { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .fast .nl-btn { min-height: 58px; padding: 8px 4px; font-size: 18px; }
+  .predict-btn { width: 100%; min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 19px; }
+  .predict-btn svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+  .ready:not([disabled]) { outline: 4px solid var(--button); outline-offset: 2px; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { outline-offset: 6px; } }
+
+  /* ---------- predict panel + news ---------- */
+  .predict-panel { display: grid; gap: 10px; border-color: var(--focus); }
+  .predict-panel p { margin: 0; font-size: 17px; }
+  .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 8px; }
+  .pick-grid.wide { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+  .pick-grid .nl-btn { min-height: 54px; padding: 6px 4px; font-size: 22px; }
+  .pick-grid .nl-btn small { font-size: 15px; }
+  .chosen { font-weight: 800; }
+  .news { display: grid; gap: 6px; }
+  .news.star { border-color: var(--d3); box-shadow: 0 0 0 3px color-mix(in srgb, var(--d3) 35%, transparent); }
+  .news-big { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.15; }
+  .news-sub { margin: 0; font-size: 17px; }
+
+  /* ---------- stats + chart ---------- */
+  .chart-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .stat { background: var(--surface-2); border: 2px solid var(--line); border-radius: 16px; padding: 8px 10px; min-width: 0; }
+  .stat .nl-label { display: block; font-size: 11px; line-height: 1.2; }
+  .stat .v { display: block; font-size: 27px; line-height: 1.15; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .v small { font-size: 15px; font-family: var(--font-display); font-weight: 600; }
+  .chart-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .toggle { gap: 6px; }
+  .toggle .nl-btn, .tool-btn { min-height: 46px; padding: 8px 14px; font-size: 16px; }
+  .chart-scroll { position: relative; overflow-x: auto; overscroll-behavior-x: contain; padding: 4px 4px 2px; margin: 0 -4px; }
+  .bars { display: grid; grid-auto-flow: column; grid-auto-columns: var(--slot, 40px); gap: var(--gap, 4px); height: 240px; width: max-content; margin: 0 auto; }
+  @media (min-width: 900px) { .chart-card .bars { height: 300px; } }
+  .col { display: grid; grid-template-rows: 20px minmax(0, 1fr) auto; min-width: 0; }
+  .cnt { font-family: var(--font-display); font-weight: 600; font-size: 13px; text-align: center; white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 20px; }
+  .track { position: relative; display: flex; align-items: flex-end; background: var(--surface-2); border-radius: 9px 9px 4px 4px; }
+  .bar { width: 100%; height: 0; background: var(--c); border-radius: 9px 9px 4px 4px; box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.16), inset 0 3px 0 rgba(255, 255, 255, 0.3); transition: height 0.28s ease-out; }
+  .bars.live .bar { transition: none; }
+  .labx { padding-top: 5px; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 16px; line-height: 1.1; white-space: nowrap; }
+  .labx.small { font-size: 13px; }
+  .bars.narrow .cnt { font-size: 11px; }
+  .bars.narrow .labx { font-size: 14px; }
+  .col.lead .track { box-shadow: 0 0 0 3px var(--fg); }
+  .col.lead .cnt { font-weight: 700; }
+  .col.lead .cnt::before { content: "\2605"; color: var(--button-edge); margin-right: 1px; }
+  .col.picked .labx > span { outline: 3px solid var(--focus); outline-offset: 1px; border-radius: 8px; padding: 0 3px; }
+  .empty { position: absolute; left: 12px; right: 12px; top: 34%; margin: 0; text-align: center; font-weight: 800; color: var(--muted); pointer-events: none; text-wrap: balance; }
+  .swipe { margin: -4px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); text-align: center; }
+  .chart-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+  .chart-foot p { margin: 0; font-size: 14px; font-weight: 700; }
+
+  /* ---------- why card ---------- */
+  .why { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .why h2 { font-size: 26px; }
+  .why h3 { font-size: 19px; margin-top: 4px; }
+  .why p { margin: 0; font-size: 17px; max-width: 64ch; }
+  .why .lede { font-size: 18px; }
+  .why b { font-weight: 800; }
+  .why-cols { display: grid; gap: 14px; min-width: 0; }
+  @media (min-width: 900px) { .why-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; column-gap: 28px; } }
+  .why-cols > div { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; align-content: start; }
+  .grid-scroll { overflow-x: auto; padding: 3px; margin: 0 -3px; }
+  .why-grid { display: grid; grid-template-columns: repeat(var(--n), var(--cell, 34px)); grid-auto-rows: var(--cell, 34px); gap: 3px; width: max-content; margin: 0 auto; }
+  .cell { display: grid; place-items: center; border-radius: 7px; font-family: var(--font-display); font-weight: 700; font-size: calc(var(--cell, 34px) * 0.46); line-height: 1; border: 0; padding: 0; }
+  .cell.hd { color: var(--muted); background: transparent; }
+  .cell.corner { color: var(--muted); font-size: calc(var(--cell, 34px) * 0.5); }
+  .cell.sum { background: var(--c); color: #1c2448; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15); transition: opacity 0.2s; }
+  .why-grid.hl .cell.sum:not(.on) { opacity: 0.2; }
+  .cell.sum.on { box-shadow: 0 0 0 2px var(--fg); }
+  .hl-note { font-weight: 700; min-height: 1.4em; }
+  .mini .bars { height: 170px; }
+  .mini .col { border: 0; padding: 0; background: none; border-radius: 10px; }
+  button.col.sel .track { box-shadow: 0 0 0 3px var(--focus); }
+  .combos { display: flex; flex-wrap: wrap; gap: 6px; }
+  .combo { font-family: var(--font-display); font-weight: 600; font-size: 16px; padding: 6px 10px; border-radius: 12px; background: var(--surface-2); border: 2px solid var(--c); }
+  .streak-box { background: var(--surface-2); border: 2px solid var(--line); border-radius: 16px; padding: 10px 14px; font-size: 18px; }
+  .words { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+  .word-def { background: var(--surface-2); border-radius: 14px; padding: 10px 12px; font-size: 15px; }
+  .word-def b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 18px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs><linearGradient id="dieFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#36459a"/><stop offset="1" stop-color="#1e275e"/></linearGradient></defs>
+</svg>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Dice Lab<small>Randomness has patterns</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <main class="lab">
+    <div class="left">
+      <section class="nl-card setup" aria-label="Choose what to roll">
+        <span class="nl-label">Roll a</span>
+        <div class="kinds" id="kinds" role="group" aria-label="What to roll"></div>
+        <span class="nl-label">How many</span>
+        <div class="counts" id="counts" role="group" aria-label="How many"></div>
+      </section>
+
+      <section class="nl-machine" aria-label="Dice">
+        <div class="nl-window tray">
+          <div class="dice" id="dice"></div>
+          <div class="result">
+            <span class="tot-lab" id="totalLab">Total</span>
+            <div class="tot-line"><span class="eq nl-num" id="eq"></span><span class="tot nl-num" id="totalVal"></span></div>
+          </div>
+        </div>
+        <p class="status" id="status" aria-live="polite"></p>
+      </section>
+
+      <button class="nl-big" id="roll">Roll</button>
+      <div class="fast">
+        <button class="nl-btn" id="r10">Roll 10</button>
+        <button class="nl-btn" id="r100">Roll 100</button>
+        <button class="nl-btn" id="r1000">Roll 1,000</button>
+      </div>
+      <button class="nl-btn predict-btn" id="predict" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/></svg><span>Predict</span></button>
+
+      <section class="nl-card predict-panel" id="predictPanel" hidden aria-label="Predict">
+        <h2>Make a prediction</h2>
+        <p id="predictAsk"></p>
+        <div class="pick-grid" id="pickGrid"></div>
+        <p class="chosen" id="pickChosen" hidden></p>
+        <div><button class="nl-btn tool-btn" id="predictCancel">Never mind</button></div>
+      </section>
+
+      <section class="nl-card news" id="news" hidden aria-live="polite"></section>
+    </div>
+
+    <div class="right">
+      <section class="nl-card chart-card" aria-label="Results chart">
+        <div class="stats">
+          <div class="stat"><span class="nl-label" id="s1l">Rolls</span><span class="v nl-num" id="s1">0</span></div>
+          <div class="stat"><span class="nl-label">Most common</span><span class="v nl-num" id="s2">–</span></div>
+          <div class="stat"><span class="nl-label" id="s3l">Average</span><span class="v nl-num" id="s3">–</span></div>
+        </div>
+        <div class="chart-head">
+          <h2>Results</h2>
+          <div class="toggle nl-seg" role="group" aria-label="Show counts or percent">
+            <button class="nl-btn" id="showCount" aria-pressed="true">Counts</button>
+            <button class="nl-btn" id="showPct" aria-pressed="false">Percent</button>
+          </div>
+        </div>
+        <div class="chart-scroll" id="chartScroll">
+          <div class="bars" id="bars"></div>
+          <p class="empty" id="empty">No rolls yet. Tap Roll, or try Roll 100.</p>
+        </div>
+        <p class="swipe" id="swipe" hidden>Swipe sideways to see every bar.</p>
+        <div class="chart-foot">
+          <p class="nl-muted" id="axis">Total</p>
+          <button class="nl-btn tool-btn" id="reset">Start over</button>
+        </div>
+      </section>
+    </div>
+
+    <section class="nl-card why" id="why" aria-label="Why"></section>
+  </main>
+</div>
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const range = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; };
+  const KINDS = ["coin", 4, 6, 8, 10, 12, 20];
+
+  // ---------- state ----------
+  const saved = NL.store.get("dice-setup", {}) || {};
+  const S = {
+    kind: KINDS.includes(saved.kind) ? saved.kind : 6,
+    count: [1, 2, 3].includes(saved.count) ? saved.count : 2,
+    pct: NL.store.get("dice-pct", false) === true,
+    tally: [], rolls: 0, sum: 0,
+    streak: { v: null, n: 0 }, best: { v: null, n: 0 },
+    busy: false, predictOpen: false, pick: null, markPick: null,
+    talk: 0, hl: null,
+  };
+  const isCoin = () => S.kind === "coin";
+  const nFaces = () => (isCoin() ? 2 : S.kind);
+  const minT = () => (isCoin() ? 0 : S.count);
+  const maxT = () => (isCoin() ? S.count : S.count * S.kind);
+  const order = () => (isCoin() && S.count === 1 ? [1, 0] : range(minT(), maxT()));
+  const idx = (t) => t - minT();
+  /** One fair roll of one die or coin. Coin: 1 = heads, 0 = tails. */
+  const rollFace = () => (isCoin() ? (NL.randInt(2) === 1 ? 1 : 0) : NL.randInt(S.kind));
+  const rollAll = () => Array.from({ length: S.count }, rollFace);
+  const sumOf = (a) => a.reduce((x, y) => x + y, 0);
+
+  // ---------- text helpers ----------
+  /** Colored-digit HTML (same colors as NL.colorDigits). */
+  const cd = (n) => `<span class="nl-digits">${[...String(n)].map((ch) => (ch >= "0" && ch <= "9" ? `<span style="--c:${NL.digitVar(ch)}">${ch}</span>` : ch)).join("")}</span>`;
+  const ord = (n) => { const s = n % 100; if (s >= 11 && s <= 13) return n + "th"; return n + ({ 1: "st", 2: "nd", 3: "rd" }[n % 10] || "th"); };
+  const headsWord = (t) => (t === 1 ? "head" : "heads");
+  function labelHTML(t, short) {
+    if (!isCoin()) return cd(t);
+    if (S.count === 1) return `<span>${t ? "Heads" : "Tails"}</span>`;
+    return short ? cd(t) : `${cd(t)} <small>${headsWord(t)}</small>`;
+  }
+  function labelText(t) {
+    if (!isCoin()) return String(t);
+    if (S.count === 1) return t ? "heads" : "tails";
+    return `${t} ${headsWord(t)}`;
+  }
+  const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+  const joinAnd = (a) => (a.length < 2 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
+  const pctOf = (part, whole) => { const p = (part / whole) * 100; return Number.isInteger(p) ? `${p}%` : `about ${Math.round(p)}%`; };
+  const verb = () => (isCoin() ? "Flip" : "Roll");
+  const nounPl = () => (isCoin() ? "flips" : "rolls");
+  function sayResult(t) { if (isCoin()) { NL.sayText(cap(labelText(t))); return undefined; } return NL.sayNumber(t); }
+
+  // ---------- dice pictures ----------
+  const poly = (cx, cy, r, n, rot = -90) => Array.from({ length: n }, (_, k) => {
+    const a = ((rot + (k * 360) / n) * Math.PI) / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  });
+  const pts = (p) => p.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const line = ([x1, y1], [x2, y2]) => `<line class="facet" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>`;
+  function numText(v, x, y, size) {
+    const spans = [...String(v)].map((ch) => `<tspan style="fill:${NL.digitVar(ch)}">${ch}</tspan>`).join("");
+    return `<text class="dn" x="${x}" y="${y}" font-size="${size}" text-anchor="middle" dominant-baseline="central">${spans}</text>`;
+  }
+  const PIPS = {
+    1: [[50, 50]], 2: [[71, 29], [29, 71]], 3: [[71, 29], [50, 50], [29, 71]],
+    4: [[29, 29], [71, 29], [29, 71], [71, 71]], 5: [[29, 29], [71, 29], [50, 50], [29, 71], [71, 71]],
+    6: [[29, 27], [71, 27], [29, 50], [71, 50], [29, 73], [71, 73]],
+  };
+  const HEX = poly(50, 50, 47, 6), TRI = poly(50, 57, 29, 3), PENT = poly(50, 54, 47, 5), PENT_IN = poly(50, 54, 28, 5);
+  function dieSVG(kind, v) {
+    const two = String(v).length > 1;
+    let body = "";
+    switch (kind) {
+      case "coin":
+        return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="coin" cx="50" cy="50" r="45"/><circle class="coin-ring" cx="50" cy="50" r="35"/><text class="coin-t" x="50" y="52" font-size="46" text-anchor="middle" dominant-baseline="central">${v ? "H" : "T"}</text></svg>`;
+      case 4:
+        body = `<polygon class="body" points="50,6 95,90 5,90"/>` + numText(v, 50, 63, 34); break;
+      case 6:
+        body = `<rect class="body" x="6" y="6" width="88" height="88" rx="18"/>` +
+          PIPS[v].map(([x, y]) => `<circle class="pip" cx="${x}" cy="${y}" r="8.5" style="fill:${NL.digitVar(v)}"/>`).join(""); break;
+      case 8:
+        body = `<polygon class="body" points="50,3 96,50 50,97 4,50"/><polygon class="facet" points="50,17 82,50 50,83 18,50"/>` + numText(v, 50, 51, 34); break;
+      case 10:
+        body = `<polygon class="body" points="50,3 95,43 50,97 5,43"/><polyline class="facet" points="5,43 50,63 95,43"/><line class="facet" x1="50" y1="63" x2="50" y2="97"/>` +
+          numText(v, 50, 38, two ? 27 : 32); break;
+      case 12:
+        body = `<polygon class="body" points="${pts(PENT)}"/><polygon class="facet" points="${pts(PENT_IN)}"/>` +
+          PENT.map((p, k) => line(PENT_IN[k], p)).join("") + numText(v, 50, 55, two ? 25 : 31); break;
+      case 20:
+        body = `<polygon class="body" points="${pts(HEX)}"/><polygon class="facet" points="${pts(TRI)}"/>` +
+          TRI.map((p, k) => line(p, HEX[k * 2]) + line(p, HEX[(k * 2 + 1) % 6]) + line(p, HEX[(k * 2 + 5) % 6])).join("") +
+          numText(v, 50, 61, two ? 22 : 27); break;
+    }
+    return `<svg viewBox="0 0 100 100" aria-hidden="true">${body}</svg>`;
+  }
+
+  // ---------- setup controls ----------
+  const kindsEl = $("#kinds"), countsEl = $("#counts");
+  KINDS.forEach((k) => {
+    const b = document.createElement("button");
+    b.className = "nl-btn"; b.id = "kind-" + k; b.dataset.kind = k;
+    b.innerHTML = `<span class="die">${dieSVG(k, k === "coin" ? 1 : k)}</span><span>${k === "coin" ? "Coin" : "d" + k}</span>`;
+    b.setAttribute("aria-label", k === "coin" ? "Coin" : `d${k}, a die with ${k} sides`);
+    b.addEventListener("click", () => setSetup(k, S.count));
+    kindsEl.appendChild(b);
+  });
+  [1, 2, 3].forEach((n) => {
+    const b = document.createElement("button");
+    b.className = "nl-btn"; b.id = "count-" + n;
+    b.addEventListener("click", () => setSetup(S.kind, n));
+    countsEl.appendChild(b);
+  });
+  function paintSetup() {
+    kindsEl.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(String(S.kind) === b.dataset.kind)));
+    [1, 2, 3].forEach((n) => {
+      const b = $("#count-" + n);
+      const w = isCoin() ? (n === 1 ? "coin" : "coins") : (n === 1 ? "die" : "dice");
+      b.innerHTML = `${cd(n)} ${w}`;
+      b.setAttribute("aria-pressed", String(S.count === n));
+    });
+    $("#roll").textContent = verb();
+    $("#r10").textContent = `${verb()} 10`;
+    $("#r100").textContent = `${verb()} 100`;
+    $("#r1000").textContent = `${verb()} ${NL.fmt(1000)}`;
+    $("#s1l").textContent = isCoin() ? "Flips" : "Rolls";
+    $("#s3l").textContent = isCoin() ? "Longest streak" : "Average";
+    $("#axis").textContent = isCoin() ? (S.count === 1 ? "Heads or tails" : "Number of heads") : (S.count === 1 ? "Number rolled" : "Total of the dice");
+    $("#empty").textContent = isCoin() ? "No flips yet. Tap Flip, or try Flip 100." : "No rolls yet. Tap Roll, or try Roll 100.";
+  }
+
+  // ---------- dice display ----------
+  let dieEls = [];
+  function buildDice() {
+    const box = $("#dice");
+    box.dataset.n = S.count; box.innerHTML = "";
+    dieEls = range(1, S.count).map((i) => { const d = document.createElement("div"); d.className = "die"; d.style.setProperty("--i", i); box.appendChild(d); return d; });
+  }
+  function setFaces(faces) { faces.forEach((v, i) => { dieEls[i].innerHTML = dieSVG(S.kind, v); }); }
+  function renderTotal(faces) {
+    const t = sumOf(faces), el = $("#totalVal");
+    el.classList.toggle("word", isCoin() && S.count === 1);
+    if (isCoin()) {
+      $("#totalLab").textContent = S.count === 1 ? "It landed on" : "Heads";
+      $("#eq").innerHTML = "";
+      el.innerHTML = S.count === 1 ? (t ? "Heads" : "Tails") : cd(t);
+    } else {
+      $("#totalLab").textContent = S.count === 1 ? "You rolled" : "Total";
+      $("#eq").innerHTML = S.count > 1 ? faces.map(cd).join(" + ") + " =" : "";
+      el.innerHTML = cd(t);
+    }
+  }
+  const restart = (el, cls) => { el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); };
+
+  // ---------- probability facts ----------
+  let DIST = new Map(), OUT = 1, MAXW = 1, MINW = 1;
+  function computeDist() {
+    const faces = isCoin() ? [0, 1] : range(1, S.kind);
+    let d = new Map([[0, 1]]);
+    for (let i = 0; i < S.count; i++) {
+      const nd = new Map();
+      for (const [s, w] of d) for (const f of faces) nd.set(s + f, (nd.get(s + f) || 0) + w);
+      d = nd;
+    }
+    DIST = d; OUT = nFaces() ** S.count;
+    const ws = [...d.values()]; MAXW = Math.max(...ws); MINW = Math.min(...ws);
+  }
+  function factLine(t) {
+    if (S.count === 1) return isCoin() ? "Heads and tails are equally likely: 1 out of 2." : `Every number is equally likely: 1 out of ${S.kind}.`;
+    const w = DIST.get(t), ways = `${w} ${w === 1 ? "way" : "ways"} out of ${OUT}`;
+    const what = isCoin() ? cap(labelText(t)) : String(t);
+    const tag = w === MAXW ? " <b>Most likely!</b>" : w === MINW ? " <b>Unlikely!</b>" : "";
+    return `${what} can happen ${ways}.${tag}`;
+  }
+
+  // ---------- recording rolls ----------
+  function clearData() {
+    S.tally = new Array(maxT() - minT() + 1).fill(0);
+    S.rolls = 0; S.sum = 0;
+    S.streak = { v: null, n: 0 }; S.best = { v: null, n: 0 };
+    S.markPick = null;
+    $("#news").hidden = true;
+  }
+  function record(faces) {
+    const t = sumOf(faces);
+    S.tally[idx(t)]++; S.rolls++; S.sum += t;
+    if (S.streak.v === t) S.streak.n++; else S.streak = { v: t, n: 1 };
+    if (S.streak.n > S.best.n) S.best = { v: t, n: S.streak.n };
+    return t;
+  }
+  function leaders() {
+    if (!S.rolls) return [];
+    const m = Math.max(...S.tally);
+    return order().filter((t) => S.tally[idx(t)] === m);
+  }
+
+  // ---------- chart ----------
+  let cols = [];
+  function sizeBars(bars, scroller, n, maxSlot) {
+    const avail = scroller.clientWidth - 8;
+    let gap = 4, slot = Math.floor((avail - gap * (n - 1)) / n);
+    if (slot < 32) { gap = 3; slot = Math.floor((avail - gap * (n - 1)) / n); }
+    slot = Math.max(24, Math.min(maxSlot, slot));
+    bars.style.setProperty("--slot", slot + "px");
+    bars.style.setProperty("--gap", gap + "px");
+    bars.classList.toggle("narrow", slot < 32);
+  }
+  function buildChart() {
+    const bars = $("#bars"); bars.innerHTML = "";
+    cols = order().map((t) => {
+      const el = document.createElement("div"); el.className = "col";
+      el.innerHTML = `<div class="cnt"></div><div class="track"><div class="bar" style="--c:${NL.colorOf(t)}"></div></div><div class="labx${isCoin() && S.count === 1 ? " small" : ""}">${labelHTML(t, true)}</div>`;
+      el.dataset.total = t;
+      bars.appendChild(el);
+      return { t, el, bar: el.querySelector(".bar"), cnt: el.querySelector(".cnt") };
+    });
+    sizeAll();
+  }
+  function cntText(n) {
+    if (!S.pct) return NL.fmt(n);
+    if (!n) return "0%";
+    const p = (n / S.rolls) * 100;
+    return p < 1 ? "<1%" : Math.round(p) + "%";
+  }
+  function renderChart() {
+    const max = S.rolls ? Math.max(...S.tally) : 0;
+    const lead = leaders(), pick = S.pick ?? S.markPick;
+    for (const c of cols) {
+      const n = S.tally[idx(c.t)];
+      c.bar.style.height = max ? (n / max) * 100 + "%" : "0%";
+      c.cnt.textContent = S.rolls ? cntText(n) : "";
+      c.el.classList.toggle("lead", lead.includes(c.t));
+      c.el.classList.toggle("picked", pick === c.t);
+    }
+    $("#empty").hidden = S.rolls > 0;
+  }
+  function renderStats() {
+    $("#s1").textContent = NL.fmt(S.rolls);
+    const lead = leaders();
+    const s2 = $("#s2");
+    if (!lead.length) s2.textContent = "–";
+    else if (lead.length === 1) s2.innerHTML = labelHTML(lead[0], false);
+    else if (lead.length === 2 && !(isCoin() && S.count === 1)) s2.innerHTML = lead.map((t) => labelHTML(t, true)).join(", ");
+    else s2.innerHTML = `Tie <small>(${lead.length})</small>`;
+    const s3 = $("#s3");
+    if (isCoin()) {
+      s3.innerHTML = S.best.n ? `${cd(S.best.n)} <small>${S.count === 1 ? (S.best.v ? "heads" : "tails") : "in a row"}</small>` : "–";
+      const ws = $("#whyStreak");
+      if (ws) ws.innerHTML = streakText();
+    } else {
+      s3.innerHTML = S.rolls ? cd((S.sum / S.rolls).toFixed(2)) : "–";
+    }
+  }
+  function streakText() {
+    if (!S.best.n) return "No flips yet. Try Flip 100 and look for streaks.";
+    const what = S.count === 1 ? `${cd(S.best.n)} ${S.best.v ? "heads" : "tails"} in a row` : `${labelHTML(S.best.v, false)}, ${cd(S.best.n)} ${S.best.n === 1 ? "time" : "times"} in a row`;
+    return `Your longest streak: <b>${what}</b>.`;
+  }
+  function centerCol(t) {
+    const sc = $("#chartScroll"), c = cols.find((x) => x.t === t);
+    if (!c || sc.scrollWidth <= sc.clientWidth + 1) return;
+    sc.scrollTo({ left: c.el.offsetLeft - sc.clientWidth / 2 + c.el.offsetWidth / 2, behavior: NL.calm() ? "auto" : "smooth" });
+  }
+
+  // ---------- buttons state ----------
+  function paintButtons() {
+    const b = S.busy, p = S.predictOpen;
+    kindsEl.querySelectorAll("button").forEach((x) => (x.disabled = b));
+    countsEl.querySelectorAll("button").forEach((x) => (x.disabled = b));
+    $("#roll").disabled = b || p;
+    $("#r10").disabled = b || p;
+    $("#r1000").disabled = b || p;
+    $("#r100").disabled = b || (p && S.pick === null);
+    $("#r100").classList.toggle("ready", p && S.pick !== null);
+    $("#predict").disabled = b;
+    $("#predict").setAttribute("aria-pressed", String(p));
+    $("#reset").disabled = b;
+  }
+  const setStatus = (html) => { $("#status").innerHTML = html; };
+
+  // ---------- single roll ----------
+  function rollOnce() {
+    if (S.busy || S.predictOpen) return;
+    S.talk++;
+    S.busy = true; paintButtons();
+    $("#news").hidden = true;
+    S.markPick = null;
+    const calm = NL.calm();
+    const final = rollAll();
+    const steps = calm ? 3 : 9;
+    if (!calm) dieEls.forEach((d) => d.classList.add("tumble"));
+    setStatus(isCoin() ? "Flipping..." : "Rolling...");
+    let k = 0;
+    const step = () => {
+      if (k < steps) {
+        setFaces(rollAll());
+        NL.sfx.tick();
+        k++;
+        setTimeout(step, (calm ? 110 : 55) + k * 7);
+        return;
+      }
+      dieEls.forEach((d) => { d.classList.remove("tumble"); if (!calm) restart(d, "landed"); });
+      setFaces(final);
+      NL.sfx.clunk();
+      const t = record(final);
+      renderTotal(final);
+      if (!calm) restart($("#totalVal"), "pop");
+      renderChart(); renderStats();
+      setStatus(factLine(t));
+      sayResult(t);
+      S.busy = false; paintButtons();
+    };
+    step();
+  }
+
+  // ---------- fast rolls ----------
+  function runMany(N) {
+    if (S.busy) return;
+    if (S.predictOpen && (N !== 100 || S.pick === null)) return;
+    S.talk++;
+    const pick = S.predictOpen ? S.pick : null;
+    if (pick !== null) { clearData(); S.markPick = pick; closePredict(); }
+    else { S.markPick = null; }
+    $("#news").hidden = true;
+    S.busy = true; paintButtons();
+    const bars = $("#bars"); bars.classList.add("live");
+    const dur = (NL.calm() ? { 10: 1600, 100: 2000, 1000: 2400 } : { 10: 2000, 100: 2500, 1000: 3000 })[N];
+    const t0 = performance.now();
+    let done = 0, lastTick = 0;
+    const frame = (now) => {
+      const p = Math.min(1, (now - t0) / dur);
+      const target = p >= 1 ? N : Math.floor(N * p);
+      let last = null;
+      while (done < target) { last = rollAll(); record(last); done++; }
+      if (last) {
+        setFaces(last); renderTotal(last); renderChart(); renderStats();
+        if (now - lastTick > (NL.calm() ? 140 : 70)) { NL.sfx.tick(); lastTick = now; }
+      }
+      setStatus(`${isCoin() ? "Flipping" : "Rolling"} <b>${NL.fmt(done)}</b> of ${NL.fmt(N)}...`);
+      if (done < N) requestAnimationFrame(frame);
+      else finishMany(N, pick);
+    };
+    requestAnimationFrame(frame);
+  }
+
+  async function finishMany(N, pick) {
+    $("#bars").classList.remove("live");
+    S.busy = false; paintButtons();
+    NL.sfx.clunk();
+    const lead = leaders();
+    const topN = S.tally[idx(lead[0])];
+    centerCol(pick !== null ? pick : lead[0]);
+    const leadHTML = joinAnd(lead.map((t) => labelHTML(t, false)));
+    const many = `${NL.fmt(topN)} ${topN === 1 ? "time" : "times"} out of ${NL.fmt(S.rolls)} ${nounPl()}`;
+    let big, sub, star = false, first = false;
+    if (pick === null) {
+      big = lead.length === 1 ? `And the winner is ${leadHTML}!` : `It's a tie: ${leadHTML}!`;
+      sub = lead.length === 1 ? `${labelHTML(lead[0], false)} came up ${many}.` : `Each came up ${many}.`;
+      setStatus(`${NL.fmt(N)} ${nounPl()} done.`);
+    } else {
+      const n = S.tally[idx(pick)];
+      const place = 1 + S.tally.filter((c) => c > n).length;
+      const tied = S.tally.filter((c) => c === n).length > 1;
+      first = place === 1; star = first;
+      big = `Your pick ${tied ? "tied for" : "came"} ${cd(ord(place))}!`;
+      const pickLine = `You picked ${labelHTML(pick, false)}. It came up ${NL.fmt(n)} ${n === 1 ? "time" : "times"}.`;
+      if (first && !tied) sub = `${pickLine} That's the most of all. Great prediction!`;
+      else if (first) sub = `${pickLine} ${leadHTML} tied for the most.`;
+      else {
+        sub = `${pickLine} The winner was ${leadHTML} with ${NL.fmt(topN)}.`;
+        if (S.count === 1) sub += ` Every ${isCoin() ? "side" : "number"} is equally likely, so luck decides who wins.`;
+        else if (DIST.get(pick) < MAXW) {
+          const peaks = order().filter((t) => DIST.get(t) === MAXW);
+          sub += ` ${joinAnd(peaks.map((t) => labelHTML(t, false)))} ${peaks.length === 1 ? "has" : "have"} the most ways to happen, so ${peaks.length === 1 ? "it is" : "they are"} the most likely.`;
+        } else sub += " Your pick was one of the most likely. Luck went the other way this time.";
+      }
+      setStatus(`${NL.fmt(N)} ${nounPl()} done. Want to predict again?`);
+    }
+    const news = $("#news");
+    news.innerHTML = `<p class="news-big">${big}</p><p class="news-sub">${sub}</p>`;
+    news.classList.toggle("star", star);
+    news.hidden = false;
+    if (first) NL.confetti();
+
+    const my = ++S.talk;
+    await NL.say("winner", "And the winner is");
+    if (my !== S.talk) return;
+    if (isCoin()) NL.sayText(cap(joinAnd(lead.map(labelText))));
+    else for (const t of lead.slice(0, 3)) { await NL.sayNumber(t); if (my !== S.talk) return; }
+    if (pick !== null) { if (first) NL.sfx.yay(); else NL.sfx.pop(); }
+  }
+
+  // ---------- predict ----------
+  function openPredict() {
+    if (S.busy) return;
+    S.talk++;
+    S.predictOpen = true; S.pick = null;
+    $("#news").hidden = true;
+    $("#predictAsk").innerHTML = `Which ${isCoin() ? (S.count === 1 ? "side" : "number of heads") : (S.count === 1 ? "number" : "total")} do you think will win 100 ${nounPl()}? Tap one. The chart starts fresh for the race.`;
+    const grid = $("#pickGrid");
+    grid.className = "pick-grid" + (isCoin() ? " wide" : "");
+    grid.innerHTML = "";
+    order().forEach((t) => {
+      const b = document.createElement("button");
+      b.className = "nl-btn"; b.dataset.total = t; b.id = "pick-" + t;
+      b.setAttribute("aria-pressed", "false");
+      b.innerHTML = labelHTML(t, false);
+      b.addEventListener("click", () => choosePick(t));
+      grid.appendChild(b);
+    });
+    $("#pickChosen").hidden = true;
+    $("#predictPanel").hidden = false;
+    paintButtons();
+    setStatus("Make a prediction first.");
+    $("#predictPanel").scrollIntoView({ behavior: NL.calm() ? "auto" : "smooth", block: "nearest" });
+    NL.say("predict", "Which number do you think will win?");
+  }
+  function choosePick(t) {
+    S.pick = t;
+    NL.sfx.pop();
+    $("#pickGrid").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.total) === t)));
+    const c = $("#pickChosen");
+    c.innerHTML = `Your pick: ${labelHTML(t, false)}. Now tap ${verb()} 100!`;
+    c.hidden = false;
+    renderChart(); paintButtons();
+  }
+  function closePredict() {
+    S.predictOpen = false; S.pick = null;
+    $("#predictPanel").hidden = true;
+    renderChart(); paintButtons();
+  }
+
+  // ---------- "Why?" card ----------
+  function waysChart(interactive) {
+    const ts = order();
+    const colsHTML = ts.map((t) => {
+      const w = DIST.get(t);
+      const inner = `<div class="cnt">${NL.fmt(w)}</div><div class="track"><div class="bar" style="--c:${NL.colorOf(t)};height:${(w / MAXW) * 100}%"></div></div><div class="labx${isCoin() && S.count === 1 ? " small" : ""}">${labelHTML(t, true)}</div>`;
+      return interactive
+        ? `<button class="col" data-t="${t}" aria-label="${cap(labelText(t))}: ${w} ${w === 1 ? "way" : "ways"}">${inner}</button>`
+        : `<div class="col">${inner}</div>`;
+    }).join("");
+    return `<div class="mini"><div class="chart-scroll" id="waysScroll"><div class="bars" id="waysBars">${colsHTML}</div></div><p class="swipe" id="waysSwipe" hidden>Swipe sideways to see every total.</p></div>`;
+  }
+  function gridHTML() {
+    const f = isCoin() ? [1, 0] : range(1, S.kind);
+    const head = (v) => (isCoin() ? (v ? "H" : "T") : cd(v));
+    let h = `<div class="cell corner">+</div>` + f.map((v) => `<div class="cell hd">${head(v)}</div>`).join("");
+    for (const a of f) {
+      h += `<div class="cell hd">${head(a)}</div>`;
+      for (const b of f) { const s = a + b; h += `<button class="cell sum" data-t="${s}" style="--c:${NL.colorOf(s)}" aria-label="${isCoin() ? head(a) + " and " + head(b) : a + " plus " + b}: ${labelText(s)}">${s}</button>`; }
+    }
+    return `<div class="grid-scroll" id="gridScroll"><div class="why-grid" id="whyGrid" style="--n:${f.length + 1}">${h}</div></div>`;
+  }
+  const WORDS = `<h3>Lab words</h3><div class="words">
+    <div class="word-def"><b>Probability</b>How likely something is to happen.</div>
+    <div class="word-def"><b>Likely</b>It will happen often.</div>
+    <div class="word-def"><b>Unlikely</b>It will happen only a little.</div>
+    <div class="word-def"><b>Equally likely</b>Each one has the same chance.</div></div>`;
+
+  function renderWhy() {
+    const why = $("#why");
+    const ts = order();
+    const peaks = ts.filter((t) => DIST.get(t) === MAXW).sort((a, b) => a - b);
+    const lows = ts.filter((t) => DIST.get(t) === MINW).sort((a, b) => a - b);
+    const L = (t) => labelHTML(t, false);
+    const N = nFaces();
+    const times = Array(S.count).fill(N).join(" × ");
+    let h = "", left = "", right = "";
+    const compare = `<p>Compare this shape with your chart. The more you ${isCoin() ? "flip" : "roll"}, the more your chart looks like it.</p>`;
+
+    if (isCoin() && S.count === 1) {
+      h = "Heads or tails?";
+      left = `<p class="lede">A coin has two sides. Heads and tails are <b>equally likely</b>. The <b>probability</b> of heads is 1 out of 2, or 50%.</p>
+        <h3>Ways to land</h3>${waysChart(false)}`;
+      right = `<p>Equally likely does not mean they take turns. Streaks happen! In 100 flips, a streak of 5 or more in a row is very likely.</p>
+        <div class="streak-box" id="whyStreak">${streakText()}</div>`;
+    } else if (S.count === 1) {
+      h = "Why do the bars even out?";
+      left = `<p class="lede">A d${N} has ${N} sides. Each number from 1 to ${N} has exactly one way to happen. So every number is <b>equally likely</b>.</p>
+        <p>The <b>probability</b> of each number is 1 out of ${N}. That's ${pctOf(1, N)}.</p>
+        <h3>Ways to make each number</h3>${waysChart(false)}`;
+      right = `<p>With only a few rolls, luck makes some bars taller. With lots of rolls, the bars even out. Try Roll ${NL.fmt(1000)} and watch!</p>
+        <p>The average lands near ${(N + 1) / 2}, halfway between 1 and ${N}.</p>`;
+    } else if (S.count === 2) {
+      const p = peaks[0];
+      const combos = isCoin() ? [] : range(1, N).filter((a) => p - a >= 1 && p - a <= N).map((a) => `${a}+${p - a}`);
+      h = `Why does ${L(p)} win?`;
+      left = `<p class="lede">Each square is one way two ${isCoin() ? "coins" : "d" + N + " dice"} can land. The first ${isCoin() ? "coin" : "die"} is down the side, the second is across the top. There are ${N} × ${N} = ${N * N} ways.</p>
+        ${gridHTML()}<p class="hl-note" id="hlNote"></p>`;
+      if (isCoin()) {
+        right = `<p>1 head shows up 2 times: H T and T H. So 1 head is the <b>most likely</b> result: 2 ways out of 4, or 50%.</p>
+          <p>0 heads and 2 heads have just 1 way each: 1 out of 4, or 25%. They are less likely.</p>`;
+      } else {
+        right = `<p>${L(p)} shows up ${MAXW} times, more than any other total${combos.length <= 12 ? ": " + combos.join(", ") : ""}. So ${L(p)} is the <b>most likely</b> total: ${MAXW} ways out of ${N * N}, ${pctOf(MAXW, N * N)}.</p>
+          <p>${L(lows[0])} and ${L(lows[lows.length - 1])} have only 1 way each, so they are <b>unlikely</b>. The average lands near ${L(p)}, right in the middle.</p>`;
+      }
+      right += `<h3>Ways to make each ${isCoin() ? "result" : "total"}</h3><p class="nl-muted">Tap one to light up its squares.</p>${waysChart(true)}${compare}`;
+    } else {
+      h = peaks.length > 1 ? `Why do ${L(peaks[0])} and ${L(peaks[1])} win?` : `Why does ${L(peaks[0])} win?`;
+      if (isCoin()) {
+        const all = [];
+        for (let i = 0; i < 8; i++) { const c = [4, 2, 1].map((m) => (i & m ? "T" : "H")); all.push(c); }
+        left = `<p class="lede">Three coins can land 2 × 2 × 2 = 8 ways:</p>
+          <div class="combos">${all.map((c) => { const hh = c.filter((x) => x === "H").length; return `<span class="combo" style="--c:${NL.colorOf(hh)}">${c.join(" ")} = ${cd(hh)}</span>`; }).join("")}</div>
+          <p>1 head and 2 heads tie with 3 ways each out of 8. They are the <b>most likely</b>. 0 heads and 3 heads have just 1 way each, so they are <b>unlikely</b>.</p>`;
+      } else {
+        left = `<p class="lede">Three d${N} dice can land ${times} = ${NL.fmt(OUT)} ways. Here is how many of those ways make each total.</p>
+          <p>${peaks.length > 1 ? `${L(peaks[0])} and ${L(peaks[1])} tie for the most ways: ${MAXW} each` : `${L(peaks[0])} has the most ways: ${MAXW}`} out of ${NL.fmt(OUT)}. ${peaks.length > 1 ? "They are" : "It is"} the <b>most likely</b>.</p>
+          <p>${L(lows[0])} and ${L(lows[lows.length - 1])} have just 1 way each: every die must land on 1, or every die on ${N}. They are very <b>unlikely</b>.</p>`;
+      }
+      right = `<h3>Ways to make each ${isCoin() ? "result" : "total"}</h3>${waysChart(false)}
+        <p>Totals in the middle have the most ways. That's why the middle of your chart grows tallest.</p>${compare}`;
+    }
+    if (isCoin() && S.count > 1) right += `<p>Streaks happen too.</p><div class="streak-box" id="whyStreak">${streakText()}</div>`;
+
+    why.innerHTML = `<h2>${h}</h2><div class="why-cols"><div>${left}</div><div>${right}</div></div>${WORDS}`;
+
+    sizeAll();
+    const ws = $("#waysScroll"), pk = ws && ws.querySelectorAll(".col")[order().indexOf(peaks[0])];
+    if (pk && ws.scrollWidth > ws.clientWidth + 1) ws.scrollLeft = pk.offsetLeft - ws.clientWidth / 2 + pk.offsetWidth / (peaks.length > 1 ? 1 : 2);
+    if (S.count === 2) {
+      why.querySelectorAll("[data-t]").forEach((el) => el.addEventListener("click", () => { highlight(Number(el.dataset.t)); NL.sfx.blip(DIST.get(Number(el.dataset.t))); }));
+      highlight(peaks[0]);
+    }
+    sizeAll();
+  }
+  function highlight(t) {
+    S.hl = t;
+    const g = $("#whyGrid"); if (!g) return;
+    g.classList.add("hl");
+    g.querySelectorAll(".cell.sum").forEach((c) => c.classList.toggle("on", Number(c.dataset.t) === t));
+    $("#waysBars").querySelectorAll("button.col").forEach((c) => c.classList.toggle("sel", Number(c.dataset.t) === t));
+    const w = DIST.get(t);
+    $("#hlNote").innerHTML = `Lit up: ${labelHTML(t, false)} can happen ${w} ${w === 1 ? "way" : "ways"} out of ${OUT}.`;
+  }
+
+  // ---------- sizing ----------
+  function sizeAll() {
+    if (cols.length) sizeBars($("#bars"), $("#chartScroll"), cols.length, isCoin() ? 110 : 64);
+    const wb = $("#waysBars"), ws = $("#waysScroll");
+    if (wb && ws) sizeBars(wb, ws, order().length, isCoin() ? 90 : 56);
+    const over = (el) => el && el.scrollWidth > el.clientWidth + 1;
+    $("#swipe").hidden = !over($("#chartScroll"));
+    if ($("#waysSwipe")) $("#waysSwipe").hidden = !over(ws);
+    const gs = $("#gridScroll"), g = $("#whyGrid");
+    if (gs && g) {
+      const n = Number(g.style.getPropertyValue("--n"));
+      const cell = Math.max(24, Math.min(46, Math.floor((gs.clientWidth - 6 - 3 * (n - 1)) / n)));
+      g.style.setProperty("--cell", cell + "px");
+    }
+  }
+  let rz = 0;
+  addEventListener("resize", () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(sizeAll); });
+
+  // ---------- setup changes ----------
+  function setSetup(kind, count) {
+    if (S.busy) return;
+    const changed = kind !== S.kind || count !== S.count;
+    S.kind = kind; S.count = count;
+    NL.store.set("dice-setup", { kind, count });
+    if (S.predictOpen) closePredict();
+    S.talk++;
+    computeDist(); clearData(); paintSetup(); buildDice();
+    const faces = rollAll();
+    setFaces(faces); renderTotal(faces);
+    buildChart(); renderChart(); renderStats(); renderWhy(); paintButtons();
+    setStatus(`Tap <b>${verb()}</b> to ${isCoin() ? "flip" : "roll"}. Or try ${verb()} 100.`);
+    if (changed) NL.sfx.pop();
+    preloadNumbers();
+  }
+
+  // ---------- events ----------
+  $("#roll").addEventListener("click", rollOnce);
+  $("#r10").addEventListener("click", () => runMany(10));
+  $("#r100").addEventListener("click", () => runMany(100));
+  $("#r1000").addEventListener("click", () => runMany(1000));
+  $("#predict").addEventListener("click", () => (S.predictOpen ? (closePredict(), setStatus(`Tap <b>${verb()}</b> to ${isCoin() ? "flip" : "roll"}.`)) : openPredict()));
+  $("#predictCancel").addEventListener("click", () => { closePredict(); setStatus(`Tap <b>${verb()}</b> to ${isCoin() ? "flip" : "roll"}.`); });
+  $("#reset").addEventListener("click", () => {
+    if (S.busy) return;
+    S.talk++;
+    clearData(); renderChart(); renderStats();
+    NL.sfx.whoosh();
+    setStatus("Fresh chart. Ready to go!");
+  });
+  function paintPct() { $("#showCount").setAttribute("aria-pressed", String(!S.pct)); $("#showPct").setAttribute("aria-pressed", String(S.pct)); }
+  $("#showCount").addEventListener("click", () => { S.pct = false; NL.store.set("dice-pct", false); paintPct(); renderChart(); });
+  $("#showPct").addEventListener("click", () => { S.pct = true; NL.store.set("dice-pct", true); paintPct(); renderChart(); });
+
+  // warm the voice clips after the first tap (audio can only start after a touch)
+  let warmed = false;
+  function preloadNumbers() { if (warmed) NL.preload(range(minT(), Math.min(100, maxT())).map((n) => "n" + n)); }
+  document.addEventListener("pointerdown", () => { if (warmed) return; warmed = true; NL.preload(["winner", "predict"]); preloadNumbers(); }, { passive: true });
+
+  paintPct();
+  setSetup(S.kind, S.count);
+})();
+</script>
+</body>
+</html>

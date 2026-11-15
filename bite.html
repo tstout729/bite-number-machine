@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}</style>
+<title>Bite Number Machine · Number Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<style>
+/* Layout: one-screen dinner app. Machine window + big button on top, place-value blocks and number facts under it,
+   bite plates along the bottom. Two columns on wide screens. The machine itself is always dark navy so the
+   colored digits glow the same in both themes. */
+:root {
+  --bg: #e8f1fa;
+  --surface: #ffffff;
+  --fg: #1c2448;
+  --muted: #5a6590;
+  --line: #c9d5ea;
+  --machine: #1f2a57;
+  --machine-edge: #131a3a;
+  --window: #0f1533;
+  --button: #ffc93c;
+  --button-edge: #d99a12;
+  --button-fg: #1c2448;
+  --good: #2f9e6e;
+  --d0: #8e98bf; --d1: #f04d54; --d2: #ff8f33; --d3: #f7c22c; --d4: #5cc14a;
+  --d5: #2fb7d6; --d6: #5478ed; --d7: #9e66e6; --d8: #f272b3; --d9: #1fae94;
+  --font-display: "Fredoka", "Nunito", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-body: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1430; --surface: #182044; --fg: #eef1ff; --muted: #a2abd4; --line: #2c3766;
+    --machine: #27336a; --machine-edge: #0a0f26; --window: #090d22;
+    --button: #ffc93c; --button-edge: #b47d0a; --button-fg: #1c2448; --good: #4cc792;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1430; --surface: #182044; --fg: #eef1ff; --muted: #a2abd4; --line: #2c3766;
+  --machine: #27336a; --machine-edge: #0a0f26; --window: #090d22;
+  --button: #ffc93c; --button-edge: #b47d0a; --button-fg: #1c2448; --good: #4cc792;
+  color-scheme: dark;
+}
+
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px;
+  -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+}
+* { box-sizing: border-box; }
+button { font: inherit; color: inherit; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--d6); outline-offset: 3px; }
+
+.app {
+  min-height: 100%; max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 12px 20px;
+  display: grid; gap: 14px;
+  grid-template-columns: 1fr;
+  grid-template-areas: "top" "machine" "go" "blocks" "plates";
+  align-content: start;
+}
+@media (min-width: 860px) {
+  .app {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+    grid-template-areas: "top top" "machine blocks" "go blocks" "plates plates";
+    column-gap: 28px;
+  }
+}
+
+/* top bar */
+.top { grid-area: top; display: flex; align-items: center; gap: 12px; }
+.brand { font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: 0.01em; line-height: 1.1; flex: 1; min-width: 0; }
+.brand small { display: block; font-family: var(--font-body); font-weight: 700; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+.stat { font-family: var(--font-display); font-weight: 600; font-size: 15px; background: var(--surface); border: 2px solid var(--line); border-radius: 999px; padding: 6px 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.stat b { font-weight: 700; }
+.gear {
+  position: relative; width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--line);
+  background: var(--surface); display: grid; place-items: center; cursor: pointer; flex: none; touch-action: none;
+}
+.gear svg.cog { width: 22px; height: 22px; fill: var(--muted); }
+.gear svg.ring { position: absolute; inset: -2px; width: 46px; height: 46px; transform: rotate(-90deg); pointer-events: none; }
+.gear svg.ring circle { fill: none; stroke: var(--d6); stroke-width: 4; stroke-dasharray: 132; stroke-dashoffset: 132; }
+
+/* the machine */
+.machine {
+  grid-area: machine; background: var(--machine); border-radius: 28px; padding: 16px 16px 14px;
+  box-shadow: inset 0 -8px 0 var(--machine-edge), 0 10px 24px rgba(10, 16, 50, 0.18);
+  display: grid; gap: 10px; position: relative;
+}
+.lights { display: flex; justify-content: center; gap: 10px; }
+.lights i { width: 10px; height: 10px; border-radius: 50%; background: #3a4683; transition: background 0.2s; }
+.machine.spinning .lights i { animation: blink 0.5s steps(2) infinite; }
+.lights i:nth-child(2n) { animation-delay: 0.25s !important; }
+@keyframes blink { 0% { background: #ffd95c; box-shadow: 0 0 10px #ffd95c; } 100% { background: #3a4683; box-shadow: none; } }
+.machine.won .lights i { background: #ffd95c; box-shadow: 0 0 10px #ffd95c; }
+
+.window {
+  background: var(--window); border-radius: 18px; border: 4px solid var(--machine-edge);
+  display: flex; justify-content: center; align-items: center; padding: 6px 10px; overflow: hidden;
+  cursor: pointer; position: relative;
+}
+.window::before, .window::after { /* soft shading top and bottom like a real reel window */
+  content: ""; position: absolute; left: 0; right: 0; height: 26%; pointer-events: none; z-index: 2;
+}
+.window::before { top: 0; background: linear-gradient(var(--window), transparent); }
+.window::after { bottom: 0; background: linear-gradient(transparent, var(--window)); }
+.reels { display: flex; font-family: var(--font-display); font-weight: 700; font-size: clamp(84px, 27vw, 156px); line-height: 1; }
+.reel { height: 1.12em; width: 0.64em; overflow: hidden; position: relative; transition: width 0.28s ease, opacity 0.28s ease; }
+.reel.collapsed { width: 0; opacity: 0; }
+.strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
+.cell { height: 1.12em; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.cell.q { color: #ffffff; opacity: 0.85; }
+.readout { text-align: center; color: #c9d1f5; font-family: var(--font-display); font-weight: 600; font-size: 18px; min-height: 1.3em; letter-spacing: 0.01em; }
+
+/* the big button */
+.go { grid-area: go; display: grid; justify-items: center; gap: 6px; }
+.big {
+  position: relative; width: min(100%, 420px); height: 96px; border: none; border-radius: 999px; cursor: pointer;
+  background: var(--button); color: var(--button-fg); font-family: var(--font-display); font-weight: 700; font-size: 34px;
+  box-shadow: 0 8px 0 var(--button-edge); transform: translateY(0); transition: transform 0.06s, box-shadow 0.06s;
+  overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.big:active:not([disabled]) { transform: translateY(6px); box-shadow: 0 2px 0 var(--button-edge); }
+.big[disabled] { cursor: default; }
+.big .fill { position: absolute; inset: 0; background: rgba(28, 36, 72, 0.16); transform-origin: left; transform: scaleX(0); }
+.big .label { position: relative; z-index: 1; }
+.big.wait { background: #ffe39a; box-shadow: 0 8px 0 #e3bd5c; }
+.hint { font-size: 14px; color: var(--muted); font-weight: 700; text-align: center; }
+@keyframes wiggle { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-3deg); } 75% { transform: rotate(3deg); } }
+.big.ready { animation: wiggle 0.4s ease 2; }
+
+/* blocks + facts */
+.blocks { grid-area: blocks; background: var(--surface); border: 2px solid var(--line); border-radius: 24px; padding: 16px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.blocks h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 18px; text-wrap: balance; }
+.blocks h2 span { font-weight: 700; }
+.groups { display: flex; flex-wrap: wrap; gap: 18px 22px; align-items: flex-end; min-height: 120px; }
+.group { display: grid; gap: 8px; justify-items: start; }
+.group .cap { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.flats { display: flex; flex-wrap: wrap; gap: 6px; max-width: 290px; }
+.flat { width: 66px; height: 66px; border-radius: 5px; background-color: var(--c);
+  background-image: linear-gradient(rgba(0,0,0,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.16) 1px, transparent 1px);
+  background-size: 6.6px 6.6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.rods { display: grid; gap: 5px; }
+.rod { display: grid; grid-template-columns: repeat(10, 14px); gap: 2px; padding: 2px; border-radius: 5px; background: rgba(0,0,0,.12); }
+.rod i { height: 14px; border-radius: 3px; background: var(--c); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
+.frame { display: grid; grid-template-columns: repeat(5, 38px); grid-auto-rows: 38px; gap: 5px; }
+.slot { border-radius: 8px; border: 2px dashed var(--line); position: relative; }
+.slot.on { border: none; background: var(--c); box-shadow: inset 0 -5px 0 rgba(0,0,0,.18), inset 0 3px 0 rgba(255,255,255,.28); }
+.slot.on::after { /* little face on each cube */
+  content: ""; position: absolute; left: 10px; right: 10px; top: 12px; height: 5px;
+  background: radial-gradient(circle at 3px 2.5px, #1c2448 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 3px) 2.5px, #1c2448 2.5px, transparent 3px);
+}
+.empty { color: var(--muted); font-weight: 700; font-size: 16px; max-width: 34ch; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; }
+.fact { font-family: var(--font-display); font-weight: 600; font-size: 16px; padding: 7px 12px; border-radius: 12px; background: var(--bg); border: 2px solid var(--line); font-variant-numeric: tabular-nums; }
+.fact.star { border-color: var(--d3); }
+
+/* bite plates */
+.plates { grid-area: plates; display: grid; gap: 8px; min-width: 0; }
+.plates-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.plates-head h3 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.plates-head span { color: var(--muted); font-weight: 700; font-size: 14px; }
+.plate-row { display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+.plate {
+  flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); border: 3px solid var(--line);
+  display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums;
+}
+.plate.full { border-color: var(--c); background: var(--c); color: #1c2448; }
+.plate.bonus { border-style: dashed; }
+.plate.next { border-style: dashed; border-color: var(--muted); }
+
+/* parent panel + celebration */
+.sheet-wrap { position: fixed; inset: 0; background: rgba(8, 12, 32, 0.55); display: grid; place-items: end center; z-index: 20;
+  padding: 16px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+@media (min-width: 640px) { .sheet-wrap { place-items: center; } }
+.sheet { width: min(100%, 560px); max-height: 100%; overflow-y: auto; background: var(--surface); color: var(--fg); border-radius: 24px; padding: 20px; display: grid; gap: 18px; }
+.sheet h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 24px; }
+.row { display: grid; gap: 8px; }
+.row > label, .row > .lab { font-weight: 800; font-size: 15px; }
+.row p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { border: 2px solid var(--line); background: var(--bg); border-radius: 12px; padding: 9px 13px; font-weight: 800; font-size: 15px; cursor: pointer; font-variant-numeric: tabular-nums; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--surface); border-color: var(--fg); }
+.toggles { display: grid; gap: 10px; }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 700; }
+.toggle small { display: block; color: var(--muted); font-weight: 600; font-size: 13px; }
+.toggle input { width: 46px; height: 28px; accent-color: var(--d6); flex: none; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn { border: 2px solid var(--line); background: var(--bg); border-radius: 14px; padding: 11px 16px; font-weight: 800; font-size: 15px; cursor: pointer; }
+.btn.primary { background: var(--fg); color: var(--surface); border-color: var(--fg); }
+.howto { margin: 0; padding-left: 20px; color: var(--muted); font-size: 14px; line-height: 1.5; display: grid; gap: 4px; }
+
+.party { text-align: center; justify-items: center; }
+.party .big-word { font-family: var(--font-display); font-weight: 700; font-size: 40px; line-height: 1.05; text-wrap: balance; }
+.party-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.party-stats div { background: var(--bg); border-radius: 16px; padding: 10px; }
+.party-stats b { display: block; font-family: var(--font-display); font-size: 34px; font-variant-numeric: tabular-nums; }
+.party-stats span { color: var(--muted); font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; }
+canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .reel { transition: none; } .big.ready { animation: none; } .machine.spinning .lights i { animation: none; } }
+.homebtn { width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); display: grid; place-items: center; flex: none; color: var(--fg); }
+.homebtn svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+
+</head>
+<body>
+<div class="app" id="app">
+  <header class="top">
+    <a class="homebtn" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <div class="brand">Bite Number Machine<small>One number for every bite</small></div>
+    <div class="stat" id="stat">Bite <b id="biteNo">0</b></div>
+    <button class="gear" id="gear" aria-label="Grown-up settings. Press and hold.">
+      <svg class="cog" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+      <svg class="ring" viewBox="0 0 46 46" aria-hidden="true"><circle cx="23" cy="23" r="21"/></svg>
+    </button>
+  </header>
+
+  <section class="machine" id="machine" aria-label="Number machine">
+    <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="window" id="window" title="Tap to hear the number again"><div class="reels" id="reels"></div></div>
+    <div class="readout" id="readout">Numbers 1 to 100</div>
+  </section>
+
+  <div class="go">
+    <button class="big" id="big"><span class="fill" id="fill"></span><span class="label" id="bigLabel">Spin for a bite!</span></button>
+    <div class="hint" id="hint">Take a bite, then spin for the next number.</div>
+  </div>
+
+  <section class="blocks" id="blocks" aria-live="polite">
+    <h2 id="blocksTitle">What does your number look like?</h2>
+    <div class="groups" id="groups"><p class="empty">Push the yellow button. Your number will show up here as blocks: hundreds, tens and ones.</p></div>
+    <div class="facts" id="facts"></div>
+  </section>
+
+  <section class="plates">
+    <div class="plates-head"><h3 id="platesTitle">Your numbers tonight</h3><span id="total">Total 0</span></div>
+    <div class="plate-row" id="plateRow"></div>
+  </section>
+</div>
+<div class="sr" aria-live="assertive" id="sr"></div>
+
+<div class="sheet-wrap" id="parentWrap" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="parentTitle">
+    <h2 id="parentTitle">Grown-up settings</h2>
+    <div class="row">
+      <span class="lab">Numbers from</span>
+      <div class="seg" id="segMax">
+        <button data-v="10">1–10</button><button data-v="20">1–20</button><button data-v="100">1–100</button><button data-v="1000">1–1000</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="lab">Bites this dinner</span>
+      <div class="seg" id="segGoal">
+        <button data-v="0">No goal</button><button data-v="5">5</button><button data-v="10">10</button><button data-v="15">15</button><button data-v="20">20</button><button data-v="30">30</button>
+      </div>
+      <p>With a goal, the plates fill up and there's a party at the end. He can keep spinning after that; extra bites count as bonus bites.</p>
+    </div>
+    <div class="row">
+      <span class="lab">Wait between bites</span>
+      <div class="seg" id="segWait">
+        <button data-v="0">Off</button><button data-v="5">5 s</button><button data-v="10">10 s</button><button data-v="15">15 s</button><button data-v="20">20 s</button>
+      </div>
+      <p>The button fills up while he chews, then says "Ready!" Helps slow down fast eating.</p>
+    </div>
+    <div class="toggles">
+      <label class="toggle"><span>Say the number out loud</span><input type="checkbox" id="optVoice"></label>
+      <label class="toggle"><span>Machine sounds</span><input type="checkbox" id="optSound"></label>
+      <label class="toggle"><span>Calm mode<small>Shorter, gentler spins and no confetti</small></span><input type="checkbox" id="optCalm"></label>
+      <label class="toggle"><span>No repeats in a row<small>Never the same number twice in a row</small></span><input type="checkbox" id="optNoRepeat"></label>
+    </div>
+    <div class="actions">
+      <button class="btn" id="undo">Undo last bite</button>
+      <button class="btn" id="newMeal">Start a new dinner</button>
+      <button class="btn primary" id="closeParent">Done</button>
+    </div>
+    <ol class="howto">
+      <li>Prop the phone up where he can reach it. The screen stays on while this page is open.</li>
+      <li>He takes a bite, then presses the yellow button. The machine spins and says his number.</li>
+      <li>Tap the number window to hear it again.</li>
+      <li>Settings open only when you press and hold the gear, so little fingers don't change them.</li>
+      <li>No sound? Check the phone's silent switch and volume.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="sheet-wrap" id="partyWrap" hidden>
+  <div class="sheet party" role="dialog" aria-modal="true" aria-labelledby="partyTitle">
+    <div class="big-word" id="partyTitle">All done!<br>Great eating!</div>
+    <div class="party-stats">
+      <div><b id="pBites">0</b><span>Bites</span></div>
+      <div><b id="pTotal">0</b><span>All added up</span></div>
+      <div><b id="pBig">0</b><span>Biggest</span></div>
+      <div><b id="pSmall">0</b><span>Smallest</span></div>
+    </div>
+    <button class="btn primary" id="closeParty">Keep going</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const DIGIT = (d) => `var(--d${d})`;
+
+  // ---------- saved state (per device; page works without it) ----------
+  const DEFAULTS = { max: 100, goal: 0, wait: 0, voice: true, sound: true, calm: false, noRepeat: false };
+  const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
+  let S = Object.assign({}, DEFAULTS, load("bnm-settings", {}));
+  let meal = load("bnm-meal", null);
+  if (!meal || !Array.isArray(meal.bites) || Date.now() - (meal.at || 0) > 4 * 3600e3) meal = { bites: [], at: Date.now(), partied: false };
+  const persist = () => { save("bnm-settings", S); meal.at = Date.now(); save("bnm-meal", meal); };
+
+  const calm = () => S.calm || matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- fair random numbers ----------
+  function randInt(max) {           // uniform 1..max, no modulo bias
+    const lim = Math.floor(0x100000000 / max) * max;
+    const a = new Uint32Array(1);
+    do { crypto.getRandomValues(a); } while (a[0] >= lim);
+    return (a[0] % max) + 1;
+  }
+  function pick() {
+    const last = meal.bites[meal.bites.length - 1];
+    let n = randInt(S.max);
+    if (S.noRepeat && S.max > 1) while (n === last) n = randInt(S.max);
+    return n;
+  }
+
+  // ---------- sound ----------
+  let ctx = null, master = null;
+  const clips = new Map();
+  function unlockAudio() {
+    if (!ctx) {
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch { }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ctx = new AC();
+      master = ctx.createGain(); master.gain.value = 0.9; master.connect(ctx.destination);
+      preloadVoice();
+    }
+    if (ctx.state === "suspended") ctx.resume();
+  }
+  async function getClip(key) {
+    if (clips.has(key)) return clips.get(key);
+    const p = fetch(`voice/${key}.mp3`).then((r) => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+      .then((b) => new Promise((res, rej) => ctx.decodeAudioData(b, res, rej))).catch(() => null);
+    clips.set(key, p);
+    return p;
+  }
+  function preloadVoice() {
+    const keys = ["done", "ready", "hello"];
+    for (let n = 1; n <= Math.min(100, S.max); n++) keys.push("n" + n);
+    let i = 0;
+    const next = () => { if (i < keys.length) getClip(keys[i++]).then(next); };
+    next(); next(); next();
+  }
+  function browserSay(text) {
+    try {
+      const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; u.pitch = 1.15;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    } catch { }
+  }
+  let voiceSrc = null;
+  async function say(key, fallbackText) {
+    if (!S.voice || !ctx) return;
+    const buf = await getClip(key);
+    if (!buf) { browserSay(fallbackText); return; }
+    try { voiceSrc && voiceSrc.stop(); } catch { }
+    const s = ctx.createBufferSource(); s.buffer = buf;
+    const g = ctx.createGain(); g.gain.value = 1.0;
+    s.connect(g).connect(master); s.start(); voiceSrc = s;
+  }
+  function sayNumber(n) {
+    if (n <= 100) say("n" + n, String(n)); else if (S.voice) browserSay(String(n));
+  }
+  function tone(freq, dur, vol, type = "sine", when = 0) {
+    if (!S.sound || !ctx) return;
+    const t = ctx.currentTime + when;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  const PENTA = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26, 28, 31, 33, 36, 38, 40, 43, 45];
+  let lastTick = 0;
+  function tick() { const now = performance.now(); if (now - lastTick < 28) return; lastTick = now; tone(2100, 0.02, 0.05, "triangle"); }
+  function clunk() { tone(190, 0.09, 0.18, "triangle"); tone(95, 0.12, 0.12, "sine"); }
+  function chime() { [72, 76, 79, 84].forEach((m, i) => { tone(midi(m), 0.6, 0.12, "sine", i * 0.07); tone(midi(m + 12), 0.25, 0.03, "sine", i * 0.07); }); }
+  function blip(i) { tone(midi(67 + PENTA[i % PENTA.length]), 0.18, 0.08, "sine"); }
+
+  // ---------- reels ----------
+  const reelsEl = $("reels");
+  let reelCount = 0;
+  function buildReels(showQ) {
+    reelCount = String(S.max).length;
+    reelsEl.innerHTML = "";
+    for (let i = 0; i < reelCount; i++) {
+      const r = document.createElement("div"); r.className = "reel";
+      const s = document.createElement("div"); s.className = "strip";
+      r.appendChild(s); reelsEl.appendChild(r);
+    }
+    const last = meal.bites[meal.bites.length - 1];
+    if (last && last <= S.max && !showQ) showNumber(last); else showQuestion();
+  }
+  function cell(d) {
+    const c = document.createElement("div"); c.className = "cell";
+    if (d === "?") { c.classList.add("q"); c.textContent = "?"; } else { c.textContent = d; c.style.color = DIGIT(d); }
+    return c;
+  }
+  function showQuestion() {
+    [...reelsEl.children].forEach((r, i) => {
+      r.classList.toggle("collapsed", i !== reelCount - 1);
+      const s = r.firstChild; s.innerHTML = ""; s.style.transform = ""; s.appendChild(cell("?"));
+    });
+  }
+  function showNumber(n) {
+    const ds = String(n).padStart(reelCount, "0").split("").map(Number);
+    const lead = reelCount - String(n).length;
+    [...reelsEl.children].forEach((r, i) => {
+      r.classList.toggle("collapsed", i < lead);
+      const s = r.firstChild; s.innerHTML = ""; s.style.transform = ""; s.appendChild(cell(ds[i]));
+    });
+  }
+
+  function spinReels(n) {
+    return new Promise((resolve) => {
+      const ds = String(n).padStart(reelCount, "0").split("").map(Number);
+      const lead = reelCount - String(n).length;
+      const reels = [...reelsEl.children];
+      const h = reels[0].getBoundingClientRect().height || reels[reelCount - 1].getBoundingClientRect().height;
+      const quiet = calm();
+      let done = 0;
+      const tracking = [];
+      reels.forEach((r, i) => {
+        r.classList.remove("collapsed");
+        const s = r.firstChild;
+        const cur = s.lastChild && s.lastChild.textContent !== "?" ? Number(s.lastChild.textContent) : Math.floor(Math.random() * 10);
+        const steps = quiet ? 6 + i * 3 : 16 + i * 9;
+        s.innerHTML = "";
+        s.appendChild(cell(cur));
+        let d = cur;
+        for (let k = 1; k < steps; k++) { d = (d + 1) % 10; s.appendChild(cell(d)); }
+        s.appendChild(cell(ds[i]));
+        const dist = (s.children.length - 1) * h;
+        const dur = quiet ? 520 + i * 220 : 1000 + i * 520;
+        const anim = s.animate([{ transform: "translateY(0)" }, { transform: `translateY(${-dist}px)` }],
+          { duration: dur, easing: quiet ? "cubic-bezier(.3,.7,.4,1)" : "cubic-bezier(.12,.55,.22,1)", fill: "forwards" });
+        tracking.push({ s, h, last: 0, live: true });
+        anim.onfinish = () => {
+          tracking[i].live = false;
+          s.innerHTML = ""; s.appendChild(cell(ds[i])); anim.cancel(); s.style.transform = "";
+          if (!quiet) r.animate([{ transform: "translateY(-7px)" }, { transform: "translateY(3px)" }, { transform: "translateY(0)" }], { duration: 220, easing: "ease-out" });
+          clunk();
+          if (i < lead) r.classList.add("collapsed");
+          if (++done === reelCount) resolve();
+        };
+      });
+      const watch = () => {
+        let any = false;
+        for (const t of tracking) {
+          if (!t.live) continue;
+          any = true;
+          const m = new DOMMatrixReadOnly(getComputedStyle(t.s).transform);
+          const idx = Math.floor(-m.m42 / t.h + 0.5);
+          if (idx !== t.last) { t.last = idx; tick(); }
+        }
+        if (any) requestAnimationFrame(watch);
+      };
+      requestAnimationFrame(watch);
+    });
+  }
+
+  // ---------- number facts ----------
+  const ONES = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+  const TENS = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+  function words(n) {
+    if (n === 1000) return "one thousand";
+    let out = [];
+    if (n >= 100) { out.push(ONES[Math.floor(n / 100)] + " hundred"); n %= 100; }
+    if (n >= 20) { out.push(TENS[Math.floor(n / 10)] + (n % 10 ? "-" + ONES[n % 10] : "")); }
+    else if (n > 0) out.push(ONES[n]);
+    return out.join(" and ");
+  }
+  const isPrime = (n) => { if (n < 2) return false; for (let k = 2; k * k <= n; k++) if (n % k === 0) return false; return true; };
+  function facts(n) {
+    const f = [];
+    const r = Math.round(Math.sqrt(n));
+    if (n > 1 && r * r === n) f.push({ t: `Square number! ${r} × ${r} = ${n}`, star: true });
+    if (isPrime(n)) f.push({ t: `${n} is a prime number`, star: true });
+    if (n >= 11 && new Set(String(n)).size === 1) f.push({ t: `All the same digits!`, star: true });
+    if (n === S.max) f.push({ t: `The biggest number it can make!`, star: true });
+    if (n % 2 === 0) f.push({ t: `Even: ${n / 2} + ${n / 2}` });
+    else f.push({ t: `Odd: ${(n - 1) / 2} + ${(n + 1) / 2}` });
+    if (n % 10 === 0) f.push({ t: `Ends in zero!` });
+    else if (n < 10) f.push({ t: `Make ten: ${n} + ${10 - n} = 10` });
+    else { const up = Math.ceil(n / 10) * 10; f.push({ t: `Next ten: ${n} + ${up - n} = ${up}` }); }
+    f.push({ t: `One less ${n - 1} · One more ${n + 1}` });
+    if (n <= 500) f.push({ t: `Double it: ${n * 2}` });
+    return f.slice(0, 5);
+  }
+
+  // ---------- blocks ----------
+  function plural(k, one, many) { return `${k} ${k === 1 ? one : many}`; }
+  function renderBlocks(n, animate) {
+    const groups = $("groups");
+    groups.innerHTML = "";
+    $("blocksTitle").innerHTML = `<span style="color:${DIGIT(n % 10)}">${n}</span> is ${words(n)}`;
+    const H = Math.floor(n / 100), T = Math.floor((n % 100) / 10), O = n % 10;
+    const units = [];
+    const mkGroup = (cap, color, body) => {
+      const g = document.createElement("div"); g.className = "group";
+      g.appendChild(body);
+      const c = document.createElement("div"); c.className = "cap"; c.textContent = cap; c.style.color = color;
+      g.appendChild(c); groups.appendChild(g);
+    };
+    if (n === 1000) {
+      const fl = document.createElement("div"); fl.className = "flats";
+      for (let i = 0; i < 10; i++) { const x = document.createElement("div"); x.className = "flat"; x.style.setProperty("--c", DIGIT(1)); fl.appendChild(x); units.push(x); }
+      mkGroup("10 hundreds = 1 thousand", DIGIT(1), fl);
+    } else {
+      if (H) {
+        const fl = document.createElement("div"); fl.className = "flats";
+        for (let i = 0; i < H; i++) { const x = document.createElement("div"); x.className = "flat"; x.style.setProperty("--c", DIGIT(H)); fl.appendChild(x); units.push(x); }
+        mkGroup(plural(H, "hundred", "hundreds"), DIGIT(H), fl);
+      }
+      if (T || H) {
+        const rods = document.createElement("div"); rods.className = "rods";
+        for (let i = 0; i < T; i++) {
+          const rod = document.createElement("div"); rod.className = "rod"; rod.style.setProperty("--c", DIGIT(T));
+          for (let k = 0; k < 10; k++) rod.appendChild(document.createElement("i"));
+          rods.appendChild(rod); units.push(rod);
+        }
+        if (T) mkGroup(plural(T, "ten", "tens"), DIGIT(T), rods);
+        else mkGroup("0 tens", DIGIT(0), rods);
+      }
+      if (n >= 10 && T && !H) { /* tens shown above */ }
+      const fr = document.createElement("div"); fr.className = "frame";
+      for (let i = 0; i < 10; i++) {
+        const sl = document.createElement("div"); sl.className = "slot";
+        if (i < O) { sl.classList.add("on"); sl.style.setProperty("--c", DIGIT(O)); units.push(sl); }
+        fr.appendChild(sl);
+      }
+      mkGroup(plural(O, "one", "ones"), DIGIT(O), fr);
+    }
+    const fx = $("facts"); fx.innerHTML = "";
+    for (const f of facts(n)) { const c = document.createElement("span"); c.className = "fact" + (f.star ? " star" : ""); c.textContent = f.t; fx.appendChild(c); }
+    if (animate && !calm()) {
+      const step = units.length > 12 ? 70 : 120;
+      units.forEach((u, i) => {
+        u.style.opacity = "0";
+        setTimeout(() => {
+          u.style.opacity = "";
+          u.animate([{ transform: "scale(0.2)", opacity: 0 }, { transform: "scale(1.12)", opacity: 1, offset: 0.7 }, { transform: "scale(1)" }], { duration: 260, easing: "ease-out" });
+          blip(i);
+        }, 250 + i * step);
+      });
+    }
+  }
+  function renderEmptyBlocks() {
+    $("blocksTitle").textContent = "What does your number look like?";
+    $("groups").innerHTML = `<p class="empty">Push the yellow button. Your number will show up here as blocks: hundreds, tens and ones.</p>`;
+    $("facts").innerHTML = "";
+  }
+
+  // ---------- plates + header ----------
+  function renderPlates() {
+    const row = $("plateRow"); row.innerHTML = "";
+    const b = meal.bites, total = b.reduce((a, x) => a + x, 0);
+    $("biteNo").textContent = S.goal ? `${b.length} of ${S.goal}` : b.length;
+    $("total").textContent = `Total ${total.toLocaleString("en-US")}`;
+    $("platesTitle").textContent = S.goal ? "Bite plates" : "Your numbers tonight";
+    const slots = Math.max(S.goal, b.length + (S.goal ? 0 : 1));
+    for (let i = 0; i < slots; i++) {
+      const p = document.createElement("div"); p.className = "plate";
+      if (i < b.length) { p.classList.add("full"); p.style.setProperty("--c", DIGIT(b[i] % 10)); p.textContent = b[i]; if (S.goal && i >= S.goal) p.classList.add("bonus"); }
+      else if (i === b.length) { p.classList.add("next"); p.textContent = i + 1; p.style.color = "var(--muted)"; }
+      else { p.textContent = i + 1; p.style.color = "var(--line)"; }
+      p.setAttribute("aria-label", i < b.length ? `Bite ${i + 1}: ${b[i]}` : `Bite ${i + 1}`);
+      row.appendChild(p);
+    }
+    if (S.goal && b.length >= S.goal) { const p = document.createElement("div"); p.className = "plate next"; p.textContent = "+"; row.appendChild(p); }
+    const cur = row.children[Math.min(b.length, row.children.length - 1)];
+    if (cur) row.scrollLeft = Math.max(0, cur.offsetLeft - row.clientWidth + 70);
+    $("readout").textContent = `Numbers 1 to ${S.max.toLocaleString("en-US")}`;
+  }
+
+  // ---------- the main button ----------
+  const big = $("big"), label = $("bigLabel"), fill = $("fill"), hint = $("hint");
+  let busy = false, waitUntil = 0, waitTimer = null;
+  function setIdle() {
+    big.disabled = false; big.classList.remove("wait");
+    const after = S.goal && meal.bites.length >= S.goal;
+    label.textContent = meal.bites.length === 0 ? "Spin for a bite!" : after ? "Bonus bite!" : "Next bite!";
+    hint.textContent = meal.bites.length === 0 ? "Take a bite, then spin for a number." : "Take a bite, then spin again.";
+  }
+  function startWait() {
+    if (!S.wait) { setIdle(); return; }
+    big.disabled = true; big.classList.add("wait");
+    const ms = S.wait * 1000; waitUntil = performance.now() + ms;
+    fill.style.transition = "none"; fill.style.transform = "scaleX(0)";
+    requestAnimationFrame(() => { fill.style.transition = `transform ${ms}ms linear`; fill.style.transform = "scaleX(1)"; });
+    hint.textContent = "Chew, chew, chew…";
+    const upd = () => {
+      const left = Math.ceil((waitUntil - performance.now()) / 1000);
+      if (left > 0) { label.textContent = `Chewing… ${left}`; waitTimer = setTimeout(upd, 200); return; }
+      fill.style.transition = "none"; fill.style.transform = "scaleX(0)";
+      setIdle();
+      say("ready", "Ready!"); tone(midi(84), 0.4, 0.08); tone(midi(91), 0.5, 0.06, "sine", 0.1);
+      if (!calm()) { big.classList.remove("ready"); void big.offsetWidth; big.classList.add("ready"); }
+    };
+    upd();
+  }
+  async function spin() {
+    unlockAudio();
+    if (busy || big.disabled) return;
+    busy = true; big.disabled = true;
+    label.textContent = "Spinning…"; hint.textContent = "Here it comes!";
+    $("machine").classList.add("spinning"); $("machine").classList.remove("won");
+    const n = pick();
+    await spinReels(n);
+    $("machine").classList.remove("spinning"); $("machine").classList.add("won");
+    chime();
+    setTimeout(() => sayNumber(n), 120);
+    $("sr").textContent = `${n}`;
+    meal.bites.push(n); persist();
+    renderBlocks(n, true); renderPlates();
+    busy = false;
+    if (S.goal && meal.bites.length === S.goal && !meal.partied) {
+      meal.partied = true; persist();
+      setTimeout(party, calm() ? 1400 : 2400);
+      setIdle();
+    } else startWait();
+  }
+  big.addEventListener("click", spin);
+  $("window").addEventListener("click", () => {
+    unlockAudio();
+    const last = meal.bites[meal.bites.length - 1];
+    if (last && !busy) { sayNumber(last); if (!calm()) $("window").animate([{ transform: "scale(1)" }, { transform: "scale(1.03)" }, { transform: "scale(1)" }], { duration: 260 }); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.code === "Space" || e.code === "Enter") && document.activeElement === document.body && $("parentWrap").hidden && $("partyWrap").hidden) { e.preventDefault(); spin(); }
+  });
+
+  // ---------- party ----------
+  function party() {
+    const b = meal.bites;
+    $("pBites").textContent = b.length;
+    $("pTotal").textContent = b.reduce((a, x) => a + x, 0).toLocaleString("en-US");
+    $("pBig").textContent = Math.max(...b); $("pSmall").textContent = Math.min(...b);
+    $("partyWrap").hidden = false;
+    say("done", "All done! Great eating!");
+    if (S.sound && ctx) [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => tone(midi(m), 0.5, 0.09, "sine", 0.6 + i * 0.09));
+    if (!calm()) confetti();
+  }
+  $("closeParty").addEventListener("click", () => { $("partyWrap").hidden = true; });
+  function confetti() {
+    const cv = document.createElement("canvas"); cv.className = "confetti"; document.body.appendChild(cv);
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+    const g = cv.getContext("2d"); g.scale(dpr, dpr);
+    const cs = getComputedStyle(document.documentElement);
+    const cols = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => cs.getPropertyValue(`--d${d}`).trim());
+    const ps = Array.from({ length: 120 }, (_, i) => ({
+      x: Math.random() * innerWidth, y: -20 - Math.random() * innerHeight * 0.6, vx: (Math.random() - 0.5) * 1.2, vy: 1.6 + Math.random() * 2.2,
+      s: 7 + Math.random() * 7, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.15, c: cols[i % cols.length], d: String(1 + (i % 9)),
+    }));
+    const t0 = performance.now();
+    g.textAlign = "center"; g.textBaseline = "middle";
+    const frame = (now) => {
+      g.clearRect(0, 0, innerWidth, innerHeight);
+      for (const p of ps) {
+        p.x += p.vx; p.y += p.vy; p.r += p.vr;
+        g.save(); g.translate(p.x, p.y); g.rotate(p.r); g.fillStyle = p.c;
+        g.fillRect(-p.s / 2, -p.s / 2, p.s, p.s);
+        g.restore();
+      }
+      if (now - t0 < 4200) requestAnimationFrame(frame); else cv.remove();
+    };
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- grown-up settings (press and hold) ----------
+  const gear = $("gear"), ringC = gear.querySelector(".ring circle");
+  let holdT = null, holdStart = 0, holdRaf = 0;
+  const HOLD = 1200;
+  function holdFrame() {
+    const p = Math.min(1, (performance.now() - holdStart) / HOLD);
+    ringC.style.strokeDashoffset = String(132 * (1 - p));
+    if (p < 1) holdRaf = requestAnimationFrame(holdFrame);
+  }
+  function holdStop() { clearTimeout(holdT); cancelAnimationFrame(holdRaf); ringC.style.strokeDashoffset = "132"; }
+  gear.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); holdStart = performance.now(); holdFrame();
+    holdT = setTimeout(() => { holdStop(); openParent(); }, HOLD);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => gear.addEventListener(ev, holdStop));
+  gear.addEventListener("contextmenu", (e) => e.preventDefault());
+  gear.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openParent(); } });
+
+  function syncSeg(id, val) { $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.v) === val))); }
+  function syncParent() {
+    syncSeg("segMax", S.max); syncSeg("segGoal", S.goal); syncSeg("segWait", S.wait);
+    $("optVoice").checked = S.voice; $("optSound").checked = S.sound; $("optCalm").checked = S.calm; $("optNoRepeat").checked = S.noRepeat;
+    $("undo").disabled = meal.bites.length === 0;
+  }
+  function openParent() { syncParent(); $("parentWrap").hidden = false; $("closeParent").focus(); }
+  function bindSeg(id, key, after) {
+    $(id).addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      S[key] = Number(b.dataset.v); persist(); syncParent(); after && after();
+    });
+  }
+  bindSeg("segMax", "max", () => { buildReels(); if (ctx) preloadVoice(); renderPlates(); });
+  bindSeg("segGoal", "goal", () => { meal.partied = S.goal > 0 && meal.bites.length >= S.goal; persist(); renderPlates(); if (!busy && !big.classList.contains("wait")) setIdle(); });
+  bindSeg("segWait", "wait");
+  [["optVoice", "voice"], ["optSound", "sound"], ["optCalm", "calm"], ["optNoRepeat", "noRepeat"]].forEach(([id, key]) =>
+    $(id).addEventListener("change", (e) => { S[key] = e.target.checked; persist(); }));
+  $("undo").addEventListener("click", () => {
+    meal.bites.pop(); if (S.goal && meal.bites.length < S.goal) meal.partied = false; persist();
+    const last = meal.bites[meal.bites.length - 1];
+    if (last && last <= S.max) { showNumber(last); renderBlocks(last, false); } else { showQuestion(); renderEmptyBlocks(); }
+    renderPlates(); syncParent(); if (!busy) { clearTimeout(waitTimer); fill.style.transform = "scaleX(0)"; setIdle(); }
+  });
+  $("newMeal").addEventListener("click", () => {
+    meal = { bites: [], at: Date.now(), partied: false }; persist();
+    clearTimeout(waitTimer); fill.style.transform = "scaleX(0)";
+    showQuestion(); renderEmptyBlocks(); renderPlates(); setIdle(); syncParent();
+    $("parentWrap").hidden = true;
+    unlockAudio(); say("hello", "Let's eat! Push the button for your first number!");
+  });
+  $("closeParent").addEventListener("click", () => { $("parentWrap").hidden = true; });
+  $("parentWrap").addEventListener("click", (e) => { if (e.target === $("parentWrap")) $("parentWrap").hidden = true; });
+
+  // ---------- keep the screen on ----------
+  let lock = null;
+  async function wake() { try { if ("wakeLock" in navigator && !lock) { lock = await navigator.wakeLock.request("screen"); lock.addEventListener("release", () => { lock = null; }); } } catch { } }
+  document.addEventListener("pointerdown", wake, { once: false, passive: true });
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+
+  // ---------- start ----------
+  buildReels();
+  const last = meal.bites[meal.bites.length - 1];
+  if (last && last <= S.max) renderBlocks(last, false); else renderEmptyBlocks();
+  renderPlates(); setIdle();
+})();
+</script>
+
+</body>
+</html>

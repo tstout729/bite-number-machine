@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Number Explorer · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  /* ---------- layout ---------- */
+  .layout { display: grid; gap: 16px; align-items: start; }
+  .main { display: grid; gap: 16px; min-width: 0; }
+  @media (min-width: 940px) {
+    .layout { grid-template-columns: minmax(0, 1fr) 340px; }
+    .book { position: sticky; top: 12px; max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+    #toBook { display: none; }
+    .tools { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ---------- the number machine ---------- */
+  .hero { display: grid; gap: 12px; min-width: 0; }
+  .mach { display: grid; gap: 12px; padding: 14px 14px 20px; }
+  .mtop { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 28px; padding: 0 4px; }
+  .mtop .nl-label { color: #aab4e0; }
+  .today-tag { font-family: var(--font-display); font-weight: 700; font-size: 14px; background: var(--button); color: var(--button-fg);
+    border-radius: 999px; padding: 4px 12px; white-space: nowrap; }
+  .screen { container-type: inline-size; display: grid; gap: 8px; justify-items: center; width: 100%; min-width: 0;
+    background: var(--window); color: var(--window-fg); border: 4px solid var(--machine-edge); border-radius: 18px;
+    padding: 16px 10px 14px; text-align: center; }
+  .big { font-family: var(--font-display); font-weight: 700; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums;
+    font-size: min(118px, calc(92cqw / var(--len, 3))); min-height: 1em; }
+  .big span { text-shadow: 0 0 22px color-mix(in srgb, var(--c, #fff) 45%, transparent); }
+  .screen.spin .big { opacity: 0.92; }
+  .words { font-family: var(--font-display); font-weight: 600; font-size: 19px; color: #c9d1f5; min-height: 1.3em; text-wrap: balance; max-width: 100%; }
+  .found-note { background: var(--button); color: var(--button-fg); border-radius: 16px; padding: 10px 14px;
+    font-family: var(--font-display); font-weight: 600; font-size: 17px; text-align: center; text-wrap: balance; }
+  .found-note.anim { animation: rise 0.45s ease-out; }
+
+  .ctrl { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 10px; align-items: stretch; }
+  .mkey { min-height: 76px; min-width: 0; border: none; border-radius: 22px; background: #e9edff; color: #1c2448;
+    box-shadow: 0 6px 0 #8f9bcc; display: grid; place-items: center; align-content: center; gap: 2px; padding: 6px 4px;
+    transition: transform 0.05s, box-shadow 0.05s; }
+  .mkey:active:not([disabled]) { transform: translateY(5px); box-shadow: 0 1px 0 #8f9bcc; }
+  .mkey[disabled] { opacity: 0.4; cursor: default; }
+  .mkey svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .mkey .nl-num { font-size: 15px; color: #4a5585; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #random { padding: 14px 22px; min-height: 76px; font-size: 27px; display: flex; align-items: center; gap: 8px; }
+  #random svg { width: 28px; height: 28px; flex: none; }
+
+  .tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .tool { min-height: 72px; display: grid; justify-items: center; align-content: center; gap: 4px; padding: 8px 6px; font-size: 15px; text-align: center; min-width: 0; }
+  .tool svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .tool small { font-family: var(--font-body); font-weight: 800; font-size: 13px; color: var(--muted); }
+  .range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 0 4px; }
+  .range .nl-btn { min-height: 44px; font-size: 16px; padding: 8px 14px; }
+
+  /* ---------- cards ---------- */
+  .card-head { display: grid; gap: 4px; }
+  .card-head h2 { font-size: 24px; }
+  .lead { margin: 8px 0 0; font-size: 17px; max-width: 62ch; }
+  .note { margin: 6px 0 0; font-size: 15px; color: var(--muted); font-weight: 700; }
+  .anim { animation: rise 0.4s ease-out backwards; animation-delay: calc(var(--k, 0) * 60ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .calm .anim, .calm .found-note.anim { animation: none !important; }
+
+  /* facts */
+  .facts { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+  @media (min-width: 700px) { .facts { grid-template-columns: 1fr 1fr; } }
+  .fact { background: var(--surface-2); border: 2px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
+  .fact.special { border-color: color-mix(in srgb, var(--d3) 70%, var(--line)); }
+  .fact p { margin: 0; font-size: 16px; }
+  .fact .nl-chip { justify-self: start; font-size: 17px; }
+  .fact.special .nl-chip { background: var(--d3); color: #1c2448; border-color: var(--d3); }
+  .tri { display: grid; justify-items: center; gap: 3px; justify-self: start; padding: 4px 0 0; }
+  .tri div { display: flex; gap: 3px; }
+  .tri i { width: 9px; height: 9px; border-radius: 50%; background: var(--d6); }
+
+  /* rectangles */
+  .rects { display: flex; flex-wrap: wrap; gap: 20px 24px; align-items: flex-end; margin-top: 16px; min-width: 0; }
+  .rect { display: grid; gap: 8px; justify-items: start; min-width: 0; max-width: 100%; }
+  .rect.line { flex-basis: 100%; }
+  .track { max-width: 100%; overflow-x: auto; padding: 10px; border-radius: 16px; background: var(--surface-2); border: 2px solid var(--line); scrollbar-width: thin; }
+  .cubes { display: grid; grid-template-columns: repeat(var(--b), var(--s)); grid-auto-rows: var(--s); gap: var(--g); width: max-content; }
+  .cubes i { border-radius: calc(var(--s) * 0.24); background: var(--c);
+    box-shadow: inset 0 calc(var(--s) * -0.14) 0 rgba(0,0,0,.2), inset 0 calc(var(--s) * 0.1) 0 rgba(255,255,255,.3); }
+  .cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .cap b { font-family: var(--font-display); font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .cap span { font-size: 15px; color: var(--muted); font-weight: 700; }
+  .cap .nl-chip { font-size: 14px; padding: 3px 10px; }
+  .slide { font-size: 14px; font-weight: 800; color: var(--muted); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }
+  .tile { background: var(--surface-2); border: 2px solid var(--line); border-radius: 18px; padding: 12px; display: grid; gap: 10px; justify-items: center; min-width: 0; }
+  .tile .box { width: 104px; height: 104px; display: grid; place-items: center; }
+  .prop { border-radius: 4px; background-color: var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,.2); }
+  .prop.grid { background-image: linear-gradient(rgba(0,0,0,.18) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.18) 1px, transparent 1px); }
+  .tile .cap { justify-content: center; text-align: center; }
+  .tile .cap b { font-size: 16px; overflow-wrap: anywhere; }
+  .tile.sq { border-color: var(--d3); }
+  .more { margin-top: 14px; min-height: 48px; }
+
+  /* factor tree */
+  .treebox { margin-top: 14px; background: var(--window); color: var(--window-fg); border: 4px solid var(--machine-edge); border-radius: 18px;
+    padding: 14px; overflow-x: auto; scrollbar-width: thin; }
+  .treebox svg { display: block; margin: 0 auto; overflow: visible; }
+  .tnum { font-family: var(--font-display); font-weight: 700; }
+  .eq { font-family: var(--font-display); font-weight: 600; font-size: 22px; text-align: center; margin-top: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+  .eq .op { color: #aab4e0; padding: 0 0.12em; }
+  .eq sup { font-size: 0.62em; }
+  .eq + .eq { margin-top: 2px; font-size: 19px; }
+
+  /* blocks + place values */
+  .blockhost { margin-top: 16px; overflow-x: auto; }
+  .places { margin-top: 14px; display: grid; gap: 8px; }
+  .place { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 6px 10px 6px 6px;
+    border-radius: 14px; background: var(--surface-2); border: 2px solid var(--line); }
+  .place.zero { opacity: 0.6; }
+  .pdig { width: 52px; height: 52px; border-radius: 12px; background: var(--window); border: 3px solid var(--machine-edge);
+    display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 30px; }
+  .place .pn { font-weight: 800; font-size: 16px; }
+  .place .pv { font-family: var(--font-display); font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+  /* other ways */
+  .ways { display: grid; gap: 12px; margin-top: 14px; }
+  @media (min-width: 700px) { .ways { grid-template-columns: 1fr 1fr; } }
+  .way { background: var(--surface-2); border: 2px solid var(--line); border-radius: 18px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .way p { margin: 0; font-size: 15px; }
+  .way .val { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
+  .strip { background: var(--window); border: 3px solid var(--machine-edge); border-radius: 12px; padding: 8px 12px;
+    font-family: var(--font-display); font-weight: 700; font-size: 24px; letter-spacing: 0.04em; overflow-wrap: anywhere; line-height: 1.3; }
+  .tally { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+  .tally svg { height: 40px; stroke: var(--fg); stroke-width: 3.5; stroke-linecap: round; fill: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row .nl-label { min-width: 0; }
+
+  /* number chips: little dark windows where digits glow */
+  .numchip { min-height: 44px; min-width: 48px; padding: 6px 12px; border-radius: 12px; background: var(--window); border: 2px solid var(--machine-edge);
+    font-family: var(--font-display); font-weight: 700; font-size: 19px; font-variant-numeric: tabular-nums; color: var(--window-fg);
+    box-shadow: 0 3px 0 var(--line); }
+  .numchip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+  .numchip[aria-current="true"] { outline: 3px solid var(--button); outline-offset: 1px; }
+  .numchip.new { animation: glowchip 1.6s ease-out 2; }
+  .calm .numchip.new { animation: none; outline: 3px solid var(--button); }
+  @keyframes glowchip { 0%, 100% { box-shadow: 0 3px 0 var(--line); } 40% { box-shadow: 0 0 0 5px var(--button); } }
+  .labeled { display: grid; gap: 2px; justify-items: start; }
+
+  /* discovery book */
+  .book { display: grid; gap: 4px; align-content: start; }
+  .book .card-head h2 { font-size: 26px; }
+  .col { border-top: 2px solid var(--line); padding-top: 12px; margin-top: 10px; }
+  .col.new { animation: colglow 1.4s ease-out 2; border-radius: 12px; }
+  .calm .col.new { animation: none; }
+  @keyframes colglow { 0%, 100% { background: transparent; } 40% { background: color-mix(in srgb, var(--button) 28%, transparent); } }
+  .col-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .col-head h3 { font-size: 19px; }
+  .count { font-family: var(--font-display); font-weight: 600; font-size: 15px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .col p { margin: 2px 0 0; font-size: 14px; color: var(--muted); font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-height: 172px; overflow-y: auto; padding: 4px 2px 6px; }
+  .none { font-size: 15px; color: var(--muted); font-weight: 700; margin-top: 6px; }
+
+  /* keypad */
+  .pad-wrap { position: fixed; inset: 0; z-index: 40; background: rgba(8, 12, 32, 0.55); display: grid; place-items: end center;
+    padding: 12px max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+  @media (min-width: 640px) { .pad-wrap { place-items: center; } }
+  .pad { width: min(100%, 400px); display: grid; gap: 12px; padding: 16px 16px 22px; }
+  .pad-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .pad-top h2 { font-size: 22px; color: var(--window-fg); }
+  .pad .nl-round { background: #e9edff; color: #1c2448; border-color: var(--machine-edge); }
+  .pad-screen { min-height: 78px; display: grid; place-items: center; text-align: center; padding: 8px 12px; }
+  .pad-screen .v { font-family: var(--font-display); font-weight: 700; font-size: 46px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .pad-screen .ph { font-family: var(--font-display); font-weight: 600; font-size: 20px; color: #8e98bf; }
+  .pad-msg { min-height: 1.4em; text-align: center; color: #c9d1f5; font-weight: 800; font-size: 15px; }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .key { min-height: 66px; border-radius: 18px; border: 3px solid var(--machine-edge); background: var(--window); color: var(--window-fg);
+    font-family: var(--font-display); font-weight: 700; font-size: 34px; box-shadow: 0 5px 0 var(--machine-edge); display: grid; place-items: center;
+    transition: transform 0.05s, box-shadow 0.05s; }
+  .key:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--machine-edge); }
+  .key svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .key.go { background: var(--button); color: var(--button-fg); border-color: var(--button-edge); box-shadow: 0 5px 0 var(--button-edge); font-size: 28px; }
+</style>
+</head>
+<body>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Number Explorer<small>Every number has its own page</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <div class="layout">
+    <main class="main">
+      <section class="hero" id="hero" aria-label="The number">
+        <div class="nl-machine mach">
+          <div class="mtop">
+            <span class="nl-label">Page</span>
+            <span class="today-tag" id="todayTag" hidden>Number of the day</span>
+          </div>
+          <button class="screen" id="screen" type="button">
+            <span class="big" id="big"></span>
+            <span class="words" id="words"></span>
+          </button>
+          <div class="found-note" id="foundNote" role="status" hidden></div>
+          <div class="ctrl">
+            <button class="mkey" id="prev" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg><span class="nl-num" id="prevNum"></span></button>
+            <button class="nl-big" id="random" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor"/></svg>Random</button>
+            <button class="mkey" id="next" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg><span class="nl-num" id="nextNum"></span></button>
+          </div>
+        </div>
+        <div class="tools">
+          <button class="nl-btn tool" id="openPad" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h.01M12 8h.01M16 8h.01M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/></svg>Go to a number</button>
+          <button class="nl-btn tool" id="today" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Number of the day<small id="todayNum"></small></button>
+          <button class="nl-btn tool" id="toBook" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M9 8h6"/></svg>Discovery Book<small id="bookCount"></small></button>
+        </div>
+        <div class="range">
+          <span class="nl-label" id="rangeLabel">Random goes up to</span>
+          <div class="nl-seg" id="rangeSeg" role="group" aria-labelledby="rangeLabel"></div>
+        </div>
+      </section>
+
+      <section class="nl-card" aria-labelledby="factsTitle">
+        <div class="card-head"><span class="nl-label">Badges</span><h2 id="factsTitle"></h2></div>
+        <ul class="facts" id="facts"></ul>
+      </section>
+
+      <section class="nl-card" aria-labelledby="rectTitle">
+        <div class="card-head"><span class="nl-label">Rectangles</span><h2 id="rectTitle"></h2></div>
+        <p class="lead" id="rectLead"></p>
+        <p class="note" id="rectNote"></p>
+        <div id="rects"></div>
+      </section>
+
+      <section class="nl-card" aria-labelledby="treeTitle">
+        <div class="card-head"><span class="nl-label">Factor tree</span><h2 id="treeTitle"></h2></div>
+        <p class="lead" id="treeLead"></p>
+        <div class="treebox" id="treebox"></div>
+      </section>
+
+      <section class="nl-card" aria-labelledby="blockTitle">
+        <div class="card-head"><span class="nl-label">Blocks</span><h2 id="blockTitle"></h2></div>
+        <p class="lead" id="blockLead"></p>
+        <div id="blockhost"></div>
+      </section>
+
+      <section class="nl-card" aria-labelledby="waysTitle">
+        <div class="card-head"><span class="nl-label">Other ways to write it</span><h2 id="waysTitle"></h2></div>
+        <div class="ways" id="ways"></div>
+      </section>
+    </main>
+
+    <aside class="nl-card book" id="book" aria-labelledby="bookTitle">
+      <div class="card-head"><span class="nl-label">Collections</span><h2 id="bookTitle">Discovery Book</h2></div>
+      <p class="note" id="bookLead"></p>
+      <div id="cols"></div>
+    </aside>
+  </div>
+</div>
+
+<div class="pad-wrap" id="padWrap" hidden>
+  <div class="nl-machine pad" role="dialog" aria-modal="true" aria-labelledby="padTitle">
+    <div class="pad-top">
+      <h2 id="padTitle">Go to a number</h2>
+      <button class="nl-round" id="padClose" type="button" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="nl-window pad-screen" id="padScreen" aria-live="polite"></div>
+    <div class="pad-msg" id="padMsg"></div>
+    <div class="keys" id="keys"></div>
+  </div>
+</div>
+
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+  const MAX = 1000000;
+  const $ = (s) => document.querySelector(s);
+  const fmt = NL.fmt;
+  const SVGNS = "http://www.w3.org/2000/svg";
+
+  /** Small element builder: h("div", {class: "x", onclick: fn}, child, "text") */
+  function h(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k === "style") e.style.cssText = v;
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : v);
+    }
+    for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));
+    return e;
+  }
+  function svg(tag, attrs) { const e = document.createElementNS(SVGNS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+  const digits = (n, cls) => NL.colorDigits(h("span", cls ? { class: cls } : null), typeof n === "number" ? fmt(n) : n);
+  const plural = (k, one, many) => `${fmt(k)} ${k === 1 ? one : many}`;
+  const listAnd = (a) => (a.length <= 1 ? a.join("") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const inBook = (v) => Number.isInteger(v) && v >= 1 && v <= MAX;
+
+  // ---------- number facts ----------
+  const FIBS = [1, 1]; while (FIBS[FIBS.length - 1] + FIBS[FIBS.length - 2] <= MAX) FIBS.push(FIBS[FIBS.length - 1] + FIBS[FIBS.length - 2]);
+  const FIBSET = new Set(FIBS);
+  const PERFECT = new Set([6, 28, 496, 8128]);
+  const sqrtOf = (n) => { const r = Math.round(Math.sqrt(n)); return r * r === n ? r : 0; };
+  const cbrtOf = (n) => { const r = Math.round(Math.cbrt(n)); return r * r * r === n ? r : 0; };
+  const triK = (n) => { const k = Math.round((Math.sqrt(8 * n + 1) - 1) / 2); return (k * (k + 1)) / 2 === n ? k : 0; };
+  const isPow2 = (n) => (n & (n - 1)) === 0;
+  const isPal = (n) => { const s = String(n); return s.length > 1 && s === [...s].reverse().join(""); };
+
+  const COLS = [
+    { id: "prime", name: "Primes", one: "a prime number", total: 78498, hint: "They can only make one rectangle: a long line.", test: (n) => NL.isPrime(n) },
+    { id: "square", name: "Squares", one: "a square number", total: 1000, hint: "A number times itself.", test: (n) => sqrtOf(n) > 0 },
+    { id: "tri", name: "Triangular numbers", one: "a triangular number", total: 1413, hint: "Rows of dots that stack into a triangle.", test: (n) => triK(n) > 0 },
+    { id: "fib", name: "Fibonacci numbers", one: "a Fibonacci number", total: FIBSET.size, hint: "Each one is the two before it added together.", test: (n) => FIBSET.has(n) },
+    { id: "pal", name: "Palindromes", one: "a palindrome", total: 1989, hint: "They read the same forward and backward.", test: isPal },
+    { id: "perfect", name: "Perfect numbers", one: "a perfect number", total: 4, hint: "Their smaller factors add up to them. Very rare!", test: (n) => PERFECT.has(n) },
+  ];
+
+  // ---------- number of the day (same all day in America/Los_Angeles) ----------
+  function laDate() {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" })
+      .formatToParts(new Date()).map((x) => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}`;
+  }
+  function hash32(s) {
+    let x = 2166136261;
+    for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); }
+    x ^= x >>> 15; x = Math.imul(x, 2246822507); x ^= x >>> 13; x = Math.imul(x, 3266489909); x ^= x >>> 16;
+    return x >>> 0;
+  }
+  /** Mostly friendly sizes: 4 days in 10 up to 100, 4 in 10 up to 1,000, then up to 10,000, then up to a million. */
+  function numberOfTheDay() {
+    const d = laDate(), a = hash32(d), b = hash32(d + "#explorer");
+    const t = a % 10;
+    const [lo, hi] = t < 4 ? [1, 100] : t < 8 ? [101, 1000] : t < 9 ? [1001, 10000] : [10001, MAX];
+    return lo + (b % (hi - lo + 1));
+  }
+
+  // ---------- saved state ----------
+  const found = (() => {
+    const raw = NL.store.get("explorer-found", {});
+    const o = {};
+    for (const c of COLS) {
+      const arr = raw && Array.isArray(raw[c.id]) ? raw[c.id].filter((v) => inBook(v) && c.test(v)) : [];
+      o[c.id] = [...new Set(arr)].sort((x, y) => x - y);
+    }
+    return o;
+  })();
+  /** Add n to every collection it belongs to; returns the ids where it is new. */
+  function record(n) {
+    const fresh = [];
+    for (const c of COLS) {
+      if (!c.test(n)) continue;
+      const list = found[c.id];
+      if (list.includes(n)) continue;
+      let i = list.length; while (i > 0 && list[i - 1] > n) i--;
+      list.splice(i, 0, n); fresh.push(c.id);
+    }
+    if (fresh.length) NL.store.set("explorer-found", found);
+    return fresh;
+  }
+  const RANGES = [100, 1000, MAX];
+  let range = RANGES.includes(NL.store.get("explorer-range", 1000)) ? NL.store.get("explorer-range", 1000) : 1000;
+
+  // ---------- voice: speak only after a tap ----------
+  let voiceToken = 0;
+  async function speechDone(t) {
+    await wait(60);
+    const end = performance.now() + 9000;
+    try { while ((speechSynthesis.speaking || speechSynthesis.pending) && performance.now() < end && t === voiceToken) await wait(100); } catch { /* no speech */ }
+  }
+  async function sayWait(p, t) { await p; await speechDone(t); }
+  async function speakLanding(n, fresh) {
+    const t = ++voiceToken;
+    const alive = () => t === voiceToken;
+    if (fresh.length) { NL.sfx.chime(); await wait(750); } else await wait(140);
+    if (!alive()) return;
+    await sayWait(NL.sayNumber(n), t); if (!alive()) return;
+    if (NL.isPrime(n)) { await sayWait(NL.say("prime", "That's a prime number!"), t); if (!alive()) return; }
+    if (sqrtOf(n)) { await sayWait(NL.say("square", "That's a square number!"), t); if (!alive()) return; }
+    if (fresh.length) await sayWait(NL.say("found", "You found it!"), t);
+  }
+  document.addEventListener("pointerdown", () => NL.preload(["prime", "square", "found"]), { once: true, passive: true });
+
+  // ---------- state + navigation ----------
+  let cur = 1, today = numberOfTheDay(), spinning = false, showAllRects = false, lastFresh = [];
+
+  function parseHash() {
+    const m = /(?:^|[#&])n=(\d{1,7})(?:&|$)/.exec(location.hash);
+    if (!m) return 0;
+    const v = Number(m[1]);
+    return inBook(v) ? v : 0;
+  }
+
+  function go(n, opts = {}) {
+    n = Math.max(1, Math.min(MAX, Math.floor(n)));
+    cur = n; showAllRects = false;
+    NL.store.set("explorer-last", n);
+    try { history.replaceState(null, "", "#n=" + n); } catch { location.hash = "n=" + n; }
+    const fresh = record(n);
+    lastFresh = opts.tap ? fresh : [];
+    render(n, lastFresh);
+    if (opts.scroll) window.scrollTo({ top: 0, behavior: NL.calm() ? "auto" : "smooth" });
+    if (opts.tap) {
+      if (PERFECT.has(n) && fresh.includes("perfect")) NL.confetti(2500);
+      speakLanding(n, fresh);
+    }
+  }
+
+  // ---------- render: machine ----------
+  function paintScreen(n, spin) {
+    const str = fmt(n);
+    const commas = (str.match(/,/g) || []).length;
+    const big = $("#big");
+    NL.colorDigits(big, str);
+    big.style.setProperty("--len", ((str.length - commas) * 0.6 + commas * 0.26 + 0.1).toFixed(2));
+    $("#words").textContent = spin ? "Spinning..." : NL.words(n);
+    $("#screen").classList.toggle("spin", !!spin);
+    $("#screen").setAttribute("aria-label", spin ? "Spinning" : `${str}, ${NL.words(n)}. Tap to hear it.`);
+  }
+
+  function renderMachine(n, fresh) {
+    paintScreen(n, false);
+    $("#prev").disabled = n <= 1; $("#next").disabled = n >= MAX;
+    $("#prevNum").textContent = n > 1 ? fmt(n - 1) : "";
+    $("#nextNum").textContent = n < MAX ? fmt(n + 1) : "";
+    $("#prev").setAttribute("aria-label", n > 1 ? `Go to ${fmt(n - 1)}` : "No numbers before 1 in this book");
+    $("#next").setAttribute("aria-label", n < MAX ? `Go to ${fmt(n + 1)}` : "1,000,000 is the last page");
+    $("#todayTag").hidden = n !== today;
+    $("#todayNum").textContent = fmt(today);
+    const note = $("#foundNote");
+    if (fresh.length) {
+      const names = fresh.map((id) => COLS.find((c) => c.id === id).one);
+      note.textContent = `New for your Discovery Book: ${listAnd(names)}!`;
+      note.hidden = false;
+      note.classList.remove("anim"); void note.offsetWidth; note.classList.add("anim");
+    } else note.hidden = true;
+  }
+
+  // ---------- render: badges ----------
+  function factsFor(n) {
+    const out = [];
+    const N = fmt(n);
+    const fs = NL.factors(n);
+    if (n === 1) out.push({ label: "One is special", special: true, text: "1 is not prime. A prime needs exactly two factors, and 1 has only one: itself." });
+    if (NL.isPrime(n)) out.push({ label: "Prime number", special: true, text: `${N} is prime. It has exactly two factors: 1 and ${N}.` });
+    if (PERFECT.has(n)) {
+      const small = fs.filter((f) => f < n).map(fmt);
+      out.push({ label: "Perfect number", special: true, text: `Add up its factors that are smaller than it: ${small.join(" + ")} = ${N}. You get ${N} back! Perfect numbers are very rare.` });
+    }
+    const r = sqrtOf(n);
+    if (r) out.push({ label: "Square number", special: true, text: `${fmt(r)} × ${fmt(r)} = ${N}. A square number is a number times itself.` });
+    const c = cbrtOf(n);
+    if (c) out.push({ label: "Cube number", special: true, text: `${fmt(c)} × ${fmt(c)} × ${fmt(c)} = ${N}. A cube number is a number times itself, and times itself again.` });
+    const k = triK(n);
+    if (k) {
+      const text = k === 1 ? "1 dot is the smallest triangle of all." : k === 2 ? "Rows of 1 and 2 dots make a triangle of 3." : k === 3 ? "Rows of 1, 2 and 3 dots make a triangle of 6."
+        : `Rows of 1, 2, 3 and so on, up to ${fmt(k)} dots, stack into a triangle of ${N}.`;
+      let extra = null;
+      if (k <= 10) {
+        extra = h("div", { class: "tri", "aria-hidden": "true" });
+        for (let row = 1; row <= k; row++) { const d = h("div"); for (let j = 0; j < row; j++) d.append(h("i")); extra.append(d); }
+      }
+      out.push({ label: "Triangular number", special: true, text, extra });
+    }
+    if (FIBSET.has(n)) {
+      let text;
+      if (n === 1) text = "The Fibonacci numbers start 1, 1, 2, 3, 5, 8. Each one is the two before it added together.";
+      else { const i = FIBS.lastIndexOf(n); text = `${fmt(FIBS[i - 2])} + ${fmt(FIBS[i - 1])} = ${N}. In the Fibonacci numbers, each one is the two before it added together.`; }
+      out.push({ label: "Fibonacci number", special: true, text });
+    }
+    if (isPow2(n)) {
+      let text;
+      if (n === 1) text = "Doubling starts at 1: 1, 2, 4, 8, 16 and on. So 1 counts as a power of two.";
+      else {
+        const p = Math.round(Math.log2(n));
+        const seq = []; for (let v = 1; v <= n; v *= 2) seq.push(fmt(v));
+        const shown = seq.length <= 7 ? seq.join(", ") : seq.slice(0, 4).join(", ") + " ... " + N;
+        text = `Start at 1 and double it ${p === 1 ? "once" : p + " times"}: ${shown}. That makes ${N} a power of two.`;
+      }
+      out.push({ label: "Power of two", special: true, text });
+    }
+    if (isPal(n)) out.push({ label: "Palindrome", special: true, text: `${[...String(n)].join(" ")} reads the same forward and backward. That makes it a palindrome.` });
+
+    if (n % 2 === 0) out.push({ label: "Even", text: `${N} splits into 2 equal groups of ${fmt(n / 2)}, with none left over.` });
+    else out.push({ label: "Odd", text: n === 1 ? "1 cannot be split into 2 equal groups. There is always 1 left over." : `Split ${N} into 2 equal groups of ${fmt((n - 1) / 2)}, and 1 is left over.` });
+
+    if (n % 1000 === 0) out.push({ label: "Multiple of 1,000", text: `${N} is ${plural(n / 1000, "thousand", "thousands")}. It is a multiple of 100 and of 10 too.` });
+    else if (n % 100 === 0) out.push({ label: "Multiple of 100", text: `${N} is ${plural(n / 100, "hundred", "hundreds")}. It is a multiple of 10 too.` });
+    else if (n % 10 === 0) out.push({ label: "Multiple of 10", text: `${N} is ${plural(n / 10, "ten", "tens")}, with no ones left over.` });
+
+    const fc = fs.length;
+    out.push({
+      label: `Exactly ${fc} ${fc === 1 ? "factor" : "factors"}`,
+      text: fc === 1 ? "A factor divides a number with nothing left over. 1 has just one factor: 1."
+        : fc <= 24 ? `Factors divide ${N} with nothing left over. They are ${listAnd(fs.map(fmt))}.`
+        : `Factors divide ${N} with nothing left over. ${N} has ${fc} of them! The rectangles below show them in pairs.`,
+    });
+    return out;
+  }
+
+  function renderFacts(n) {
+    $("#factsTitle").textContent = `What makes ${fmt(n)} special`;
+    const ul = $("#facts"); ul.replaceChildren();
+    factsFor(n).forEach((f, i) => {
+      ul.append(h("li", { class: "fact anim" + (f.special ? " special" : ""), style: `--k:${Math.min(i, 8)}` },
+        h("span", { class: "nl-chip" + (f.special ? " star" : "") }, f.label), h("p", null, f.text), f.extra));
+    });
+  }
+
+  // ---------- render: rectangles (the heart) ----------
+  function pairsOf(n) { return NL.factors(n).filter((a) => a * a <= n).map((a) => [a, n / a]); }
+
+  /** Each rectangle of a number gets the next digit color, 1 red, 2 orange, 3 yellow ..., so the set reads like a rainbow. */
+  const pairColor = (i) => NL.digitVar((i % 9) + 1);
+  function cubeGrid(a, b, s, g, c) {
+    const grid = h("div", { class: "cubes", role: "img", "aria-label": `${a} ${a === 1 ? "row" : "rows"} of ${b} cubes`,
+      style: `--b:${b};--s:${s}px;--g:${g}px;--c:${c}` });
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < a * b; i++) frag.append(document.createElement("i"));
+    grid.append(frag);
+    return grid;
+  }
+  function caption(a, b) {
+    return h("div", { class: "cap" },
+      h("b", null, `${fmt(a)} × ${fmt(b)}`),
+      h("span", null, `${fmt(a)} ${a === 1 ? "row" : "rows"} of ${fmt(b)}`),
+      a === b && a > 1 ? h("span", { class: "nl-chip star" }, "A square!") : null);
+  }
+
+  function renderRects(n) {
+    const N = fmt(n), host = $("#rects"), pairs = pairsOf(n), prime = NL.isPrime(n);
+    $("#rectTitle").textContent = `${N} as rectangles`;
+    host.replaceChildren();
+    const lead = $("#rectLead"), note = $("#rectNote");
+    if (n === 1) { lead.textContent = "1 cube makes just one tiny square: 1 × 1. There is no other way to arrange it."; note.textContent = ""; }
+    else if (prime) { lead.textContent = `${N} is prime, so ${N} cubes can only make one long line: 1 row of ${N}. No other rectangle works. That is what prime means.`; note.textContent = ""; }
+    else {
+      lead.textContent = `Multiplication makes rectangles. ${N} cubes can make ${pairs.length} different rectangles${n <= 144 ? ", and each one uses all " + N + " cubes" : ""}.`;
+      note.textContent = n <= 144 ? "Turning a rectangle around does not make a new one."
+        : `${N} cubes are too many to draw one by one, so these shapes are drawn to scale.` + (pairs.length > 12 && !showAllRects ? ` Here are the 12 closest to a square.` : "");
+    }
+
+    if (n <= 144) {
+      const avail = Math.max(240, host.clientWidth || 300);
+      const fit = (cols, w) => Math.floor((w - (cols - 1) * 3) / cols);
+      const others = pairs.filter((p) => p[0] > 1);
+      let s = 26;
+      if (others.length) s = Math.min(s, fit(others[0][1], avail));
+      const lineFit = fit(n, avail - 24);
+      if (lineFit >= 12) s = Math.min(s, lineFit);
+      else if (!others.length) s = Math.min(s, Math.max(10, lineFit));
+      s = Math.max(9, s);
+      const g = s >= 14 ? 3 : 2;
+      const box = h("div", { class: "rects" });
+      pairs.forEach(([a, b], i) => {
+        const grid = cubeGrid(a, b, s, g, pairColor(i));
+        const isLine = a === 1 && n > 1;
+        if (isLine) {
+          const track = h("div", { class: "track" }, grid);
+          const fig = h("div", { class: "rect line anim", style: `--k:${i}` }, track, caption(a, b));
+          box.append(fig);
+          requestAnimationFrame(() => {
+            if (track.scrollWidth > track.clientWidth + 2) fig.querySelector(".cap").append(h("span", { class: "slide" }, "Slide the line to see all of it →"));
+          });
+        } else box.append(h("div", { class: "rect anim", style: `--k:${i}` }, grid, caption(a, b)));
+      });
+      host.append(box);
+      return;
+    }
+
+    const tiles = h("div", { class: "tiles" });
+    const LIMIT = 12;
+    // when there are many, start with the ones closest to a square: they are the most interesting shapes
+    const shown = showAllRects ? pairs : pairs.slice(-LIMIT);
+    const first = pairs.length - shown.length;
+    shown.forEach(([a, b], i) => {
+      const L = 104, cell = L / b, hgt = Math.max(4, Math.round(L * (a / b)));
+      const style = `width:${L}px;height:${hgt}px;--c:${pairColor(first + i)};` + (cell >= 4 ? `background-size:${cell}px ${cell}px;` : "");
+      tiles.append(h("div", { class: "tile anim" + (a === b ? " sq" : ""), style: `--k:${Math.min(i, 10)}` },
+        h("div", { class: "box" }, h("div", { class: "prop" + (cell >= 4 ? " grid" : ""), style, role: "img", "aria-label": `${fmt(a)} by ${fmt(b)} rectangle` })),
+        h("div", { class: "cap" }, h("b", null, `${fmt(a)} × ${fmt(b)}`), a === b ? h("span", { class: "nl-chip star" }, "A square!") : null)));
+    });
+    host.append(tiles);
+    if (pairs.length > LIMIT) {
+      host.append(h("button", { class: "nl-btn more", type: "button", id: "moreRects", onclick: () => { showAllRects = !showAllRects; NL.sfx.pop(); renderRects(cur); } },
+        showAllRects ? "Show fewer rectangles" : `Show all ${pairs.length} rectangles`));
+    }
+  }
+
+  // ---------- render: factor tree ----------
+  function splitPair(m) { for (let a = Math.floor(Math.sqrt(m)); a >= 2; a--) if (m % a === 0) return [a, m / a]; return null; }
+  function buildTree(m) { const p = splitPair(m); return { v: m, kids: p ? [buildTree(p[0]), buildTree(p[1])] : [] }; }
+  function svgDigits(x, y, str, size) {
+    const t = svg("text", { x, y, "text-anchor": "middle", "dominant-baseline": "central", class: "tnum", "font-size": size });
+    for (const ch of str) {
+      const sp = svg("tspan", {}); sp.textContent = ch;
+      sp.setAttribute("style", ch >= "0" && ch <= "9" ? `fill:var(--d${ch})` : "fill:#c9d1f5");
+      t.append(sp);
+    }
+    return t;
+  }
+
+  function renderTree(n) {
+    const N = fmt(n), box = $("#treebox"), pf = NL.primeFactors(n);
+    $("#treeTitle").textContent = `The factor tree of ${N}`;
+    box.replaceChildren();
+    if (n === 1) {
+      $("#treeLead").textContent = "1 has no prime factors at all, so its tree has nothing to grow. Every other number is built from primes.";
+      box.append(h("div", { class: "eq" }, digits(1)));
+      return;
+    }
+    $("#treeLead").textContent = NL.isPrime(n)
+      ? `${N} is prime, so it cannot be split. Its tree is just one circle.`
+      : `Split ${N} into two factors, then keep splitting until every branch ends in a prime. The circled numbers are primes.`;
+
+    const FS = 20, GAP = 7, LH = 70, TOP = 26;
+    const textW = (str) => { let w = 0; for (const ch of str) w += ch === "," ? 6 : 12.5; return w; };
+    const root = buildTree(n);
+    let cursor = 0, maxD = 0;
+    (function place(node, d) {
+      node.d = d; maxD = Math.max(maxD, d); node.str = fmt(node.v); node.tw = textW(node.str);
+      if (!node.kids.length) {
+        node.half = Math.max(18, node.tw / 2 + 10);
+        node.x = cursor + node.half; cursor = node.x + node.half + GAP;
+      } else {
+        node.kids.forEach((k) => place(k, d + 1));
+        node.x = (node.kids[0].x + node.kids[1].x) / 2; node.half = node.tw / 2;
+      }
+    })(root, 0);
+    let minX = Infinity, maxX = -Infinity;
+    (function bounds(node) { minX = Math.min(minX, node.x - node.half); maxX = Math.max(maxX, node.x + node.half); node.kids.forEach(bounds); })(root);
+    const pad = 6, W = maxX - minX + pad * 2, H = TOP + maxD * LH + 26;
+    const off = pad - minX;
+    const yOf = (d) => TOP + d * LH;
+    const s = svg("svg", { viewBox: `0 0 ${W.toFixed(1)} ${H}`, role: "img", "aria-label": `Factor tree of ${N}` });
+    const edges = svg("g", { stroke: "#6c78b4", "stroke-width": 2.5, "stroke-linecap": "round" });
+    const nodes = svg("g", {});
+    (function draw(node) {
+      const x = node.x + off, y = yOf(node.d);
+      for (const k of node.kids) {
+        const kx = k.x + off, ky = yOf(k.d);
+        edges.append(svg("line", { x1: x, y1: y + 14, x2: kx, y2: ky - (k.kids.length ? 14 : 20) }));
+        draw(k);
+      }
+      if (!node.kids.length) {
+        const last = node.str[node.str.length - 1];
+        nodes.append(svg("rect", { x: x - node.half, y: y - 18, width: node.half * 2, height: 36, rx: 18,
+          style: `fill:rgba(255,255,255,0.07);stroke:var(--d${last});stroke-width:3` }));
+      }
+      nodes.append(svgDigits(x, y + 1, node.str, FS));
+    })(root);
+    s.append(edges, nodes);
+    const avail = Math.max(200, box.clientWidth - 36);
+    const scale = W > avail ? Math.max(0.5, avail / W) : 1;
+    s.setAttribute("width", (W * scale).toFixed(1)); s.setAttribute("height", (H * scale).toFixed(1));
+    box.append(s);
+
+    if (pf.length < 2) return;
+    const eq = h("div", { class: "eq" }, digits(n), h("span", { class: "op" }, " = "));
+    pf.forEach((p, i) => { if (i) eq.append(h("span", { class: "op" }, " × ")); eq.append(digits(p)); });
+    box.append(eq);
+    const groups = []; for (const p of pf) { const g = groups[groups.length - 1]; if (g && g[0] === p) g[1]++; else groups.push([p, 1]); }
+    if (groups.some((g) => g[1] > 1) && pf.length > 2) {
+      const short = h("div", { class: "eq" }, h("span", { class: "op" }, "= "));
+      groups.forEach(([p, e], i) => { if (i) short.append(h("span", { class: "op" }, " × ")); short.append(digits(p)); if (e > 1) short.append(h("sup", null, digits(e))); });
+      box.append(short);
+    }
+  }
+
+  // ---------- render: blocks ----------
+  const PLACE_NAMES = ["ones", "tens", "hundreds", "thousands", "ten thousands", "hundred thousands", "millions"];
+  function renderBlocks(n) {
+    const N = fmt(n), host = $("#blockhost");
+    host.replaceChildren();
+    const ds = String(n).split("").map(Number);
+    if (n <= 9999) {
+      $("#blockTitle").textContent = `${N} in blocks`;
+      const parts = [];
+      const len = ds.length;
+      ds.forEach((d, i) => { const place = len - 1 - i; parts.push(`${d} ${d === 1 ? PLACE_NAMES[place].replace(/s$/, "") : PLACE_NAMES[place]}`); });
+      $("#blockLead").textContent = `${N} is ${listAnd(parts)}.`;
+      host.append(h("div", { class: "blockhost" }, NL.blocks(n)));
+      return;
+    }
+    $("#blockTitle").textContent = `${N} by place value`;
+    $("#blockLead").textContent = `Blocks stop at 9,999, because ${N} would need ${fmt(Math.floor(n / 1000))} thousand-blocks! Here is how its digits fill the places.`;
+    const list = h("div", { class: "places" });
+    ds.forEach((d, i) => {
+      const place = ds.length - 1 - i;
+      const name = d === 1 ? PLACE_NAMES[place].replace(/s$/, "") : PLACE_NAMES[place];
+      list.append(h("div", { class: "place" + (d === 0 ? " zero" : "") },
+        digits(String(d), "pdig"), h("span", { class: "pn" }, `${d} ${name}`), h("span", { class: "pv" }, fmt(d * 10 ** place))));
+    });
+    host.append(list);
+  }
+
+  // ---------- render: other ways ----------
+  const ROMAN = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+  const ROMAN_VAL = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+  function roman(n) { let s = ""; for (const [v, r] of ROMAN) while (n >= v) { s += r; n -= v; } return s; }
+  function tallyGroup(k) {
+    const w = k === 5 ? 46 : 8 + (k - 1) * 9 + 6;
+    const g = svg("svg", { viewBox: `0 0 ${w} 40`, width: w, height: 40, "aria-hidden": "true" });
+    for (let i = 0; i < Math.min(k, 4); i++) g.append(svg("line", { x1: 7 + i * 10, y1: 4, x2: 7 + i * 10, y2: 36 }));
+    if (k === 5) g.append(svg("line", { x1: 2, y1: 30, x2: 44, y2: 10 }));
+    return g;
+  }
+  function numBtn(v, label) {
+    if (!inBook(v)) return h("span", { class: "labeled" }, h("span", { class: "nl-label" }, label), h("span", { class: "nl-num", style: "font-size:22px" }, fmt(v)));
+    return h("span", { class: "labeled" }, h("span", { class: "nl-label" }, label),
+      h("button", { class: "numchip", type: "button", "aria-label": `Go to ${fmt(v)}`, onclick: () => { NL.sfx.pop(); go(v, { tap: true, scroll: true }); } }, digits(v)));
+  }
+  function renderWays(n) {
+    const N = fmt(n), ways = $("#ways");
+    $("#waysTitle").textContent = `More ways to show ${N}`;
+    ways.replaceChildren();
+    const way = (title, ...body) => ways.append(h("div", { class: "way" }, h("span", { class: "nl-label" }, title), ...body));
+
+    if (n <= 3999) {
+      const r = roman(n), used = [...new Set(r)].sort((a, b) => ROMAN_VAL[b] - ROMAN_VAL[a]);
+      way("Roman numerals", h("div", { class: "val" }, r), h("p", { class: "nl-muted" }, used.map((c) => `${c} = ${fmt(ROMAN_VAL[c])}`).join(", ")));
+    } else way("Roman numerals", h("p", null, `Everyday Roman numerals stop at 3,999 (MMMCMXCIX). ${N} is too big for them.`));
+
+    const bin = n.toString(2);
+    const grouped = bin.replace(/\B(?=(\d{4})+(?!\d))/g, " ");
+    way("Binary", h("div", { class: "strip" }, digits(grouped)), h("p", { class: "nl-muted" }, `Binary uses only 0 and 1. Computers count this way. ${N} needs ${bin.length} binary ${bin.length === 1 ? "digit" : "digits"}.`));
+
+    if (n <= 50) {
+      const t = h("div", { class: "tally", role: "img", "aria-label": `${n} tally marks` });
+      for (let i = 0; i < Math.floor(n / 5); i++) t.append(tallyGroup(5));
+      if (n % 5) t.append(tallyGroup(n % 5));
+      way("Tally marks", t, h("p", { class: "nl-muted" }, n >= 5 ? `Each bundle is 5. ${plural(Math.floor(n / 5), "bundle", "bundles")}${n % 5 ? ` and ${n % 5} more` : ""}.` : "One mark for each one."));
+    } else {
+      const b = Math.floor(n / 5), r = n % 5;
+      way("Tally marks", h("div", { class: "tally" }, tallyGroup(5)), h("p", null, `Tally marks are best for small numbers. ${N} would need ${plural(b, "bundle", "bundles")} of 5${r ? ` and ${r} more` : ""}!`));
+    }
+
+    const T = Math.floor(n / 10), O = n % 10;
+    const ds = String(n).split("").map(Number);
+    const expanded = ds.map((d, i) => d * 10 ** (ds.length - 1 - i)).filter((v) => v > 0).map(fmt);
+    way("Tens and ones", h("div", { class: "val", style: "font-size:24px" }, `${plural(T, "ten", "tens")} and ${plural(O, "one", "ones")}`),
+      h("p", { class: "nl-muted" }, expanded.length > 1 ? `${N} = ${expanded.join(" + ")}` : (T ? `${N} = ${fmt(T)} × 10` : `${N} is just ${plural(O, "one", "ones")}.`)));
+
+    way("Neighbors", h("div", { class: "row" },
+      n > 1 ? numBtn(n - 1, "Just before") : null, n < MAX ? numBtn(n + 1, "Just after") : null),
+      h("p", { class: "nl-muted" }, n === 1 ? "0 comes before 1, but this book starts at 1." : n === MAX ? "1,000,000 is the last page of this book. Numbers keep going forever, though!" : `${N} sits between ${fmt(n - 1)} and ${fmt(n + 1)}.`));
+
+    const t10 = Math.round(n / 10) * 10, t100 = Math.round(n / 100) * 100;
+    way("Nearest ten and hundred", h("div", { class: "row" }, numBtn(t10, "Nearest ten"), numBtn(t100, "Nearest hundred")),
+      h("p", { class: "nl-muted" }, n % 10 === 0 ? `${N} is already a ten. Rounding finds the closest one.` : `Rounding finds the closest ten or hundred. ${N} is closest to ${fmt(t10)} and ${fmt(t100)}.`));
+  }
+
+  // ---------- render: discovery book ----------
+  function renderBook(fresh, n) {
+    const host = $("#cols"); host.replaceChildren();
+    const total = COLS.reduce((s, c) => s + found[c.id].length, 0);
+    $("#bookLead").textContent = total
+      ? "Every special number you visit gets saved here. Tap one to go back to it."
+      : "Your book is empty for now. Visit numbers to fill it up!";
+    $("#bookCount").textContent = `${fmt(total)} found`;
+    for (const c of COLS) {
+      const list = found[c.id];
+      const isNew = fresh.includes(c.id);
+      const col = h("section", { class: "col" + (isNew ? " new" : ""), id: "col-" + c.id },
+        h("div", { class: "col-head" }, h("h3", null, c.name), h("span", { class: "count" }, `${fmt(list.length)} of ${fmt(c.total)}`)),
+        h("p", null, c.hint));
+      if (!list.length) col.append(h("div", { class: "none" }, "None yet. Keep exploring!"));
+      else {
+        const chips = h("div", { class: "chips" });
+        for (const v of list) {
+          chips.append(h("button", {
+            class: "numchip" + (isNew && v === n ? " new" : ""), type: "button", "aria-current": v === n ? "true" : null,
+            "aria-label": `Go to ${fmt(v)}`, onclick: () => { NL.sfx.pop(); go(v, { tap: true, scroll: true }); },
+          }, digits(v)));
+        }
+        col.append(chips);
+      }
+      host.append(col);
+    }
+  }
+
+  function render(n, fresh) {
+    document.documentElement.classList.toggle("calm", NL.calm());
+    renderMachine(n, fresh);
+    renderFacts(n);
+    renderRects(n);
+    renderTree(n);
+    renderBlocks(n);
+    renderWays(n);
+    renderBook(fresh, n);
+  }
+
+  // ---------- random with a short spin ----------
+  function setBusy(b) { for (const id of ["#random", "#prev", "#next", "#today", "#openPad"]) $(id).disabled = b || (id === "#prev" && cur <= 1) || (id === "#next" && cur >= MAX); }
+  function spin() {
+    if (spinning) return;
+    spinning = true; setBusy(true); voiceToken++;
+    $("#foundNote").hidden = true;
+    const target = NL.randInt(range);
+    const delays = NL.calm() ? [160, 200, 260] : [45, 50, 55, 62, 70, 80, 92, 108, 128, 155, 190];
+    let i = 0;
+    const step = () => {
+      if (i < delays.length) {
+        let v = NL.randInt(range); if (range > 1 && v === target) v = (v % range) + 1;
+        paintScreen(v, true); NL.sfx.tick();
+        setTimeout(step, delays[i++]);
+      } else {
+        spinning = false; setBusy(false); NL.sfx.pop();
+        go(target, { tap: true });
+      }
+    };
+    step();
+  }
+
+  // ---------- keypad ----------
+  let padVal = "";
+  const padWrap = $("#padWrap");
+  function padMsg(t) { $("#padMsg").textContent = t; }
+  function paintPad() {
+    const scr = $("#padScreen"); scr.replaceChildren();
+    if (padVal) scr.append(digits(Number(padVal), "v")); else scr.append(h("span", { class: "ph" }, "Type a number"));
+  }
+  function openPad() { if (spinning) return; padVal = ""; padMsg("Any number from 1 to 1,000,000."); paintPad(); padWrap.hidden = false; NL.sfx.pop(); $("#k1").focus(); }
+  function closePad() { padWrap.hidden = true; $("#openPad").focus(); }
+  function pressDigit(d) {
+    if (!padVal && d === 0) { NL.sfx.soft(); padMsg("Numbers in this book start at 1."); return; }
+    const nv = padVal + d;
+    if (Number(nv) > MAX) { NL.sfx.soft(); padMsg("The biggest page is 1,000,000."); return; }
+    padVal = nv; NL.sfx.blip(d); padMsg(""); paintPad();
+  }
+  function padBack() { if (!padVal) { NL.sfx.soft(); return; } padVal = padVal.slice(0, -1); NL.sfx.tick(); padMsg(""); paintPad(); }
+  function padGo() {
+    if (!padVal) { NL.sfx.soft(); padMsg("Type a number first, then tap Go."); return; }
+    const v = Number(padVal); closePad(); NL.sfx.pop(); go(v, { tap: true, scroll: true });
+  }
+  (() => {
+    const keys = $("#keys");
+    for (const d of [1, 2, 3, 4, 5, 6, 7, 8, 9]) keys.append(h("button", { class: "key", id: "k" + d, type: "button", "aria-label": String(d), onclick: () => pressDigit(d) }, digits(String(d))));
+    keys.append(h("button", { class: "key", id: "kBack", type: "button", "aria-label": "Delete last digit", onclick: padBack }));
+    $("#kBack").innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-6-7z"/><path d="M12 9.5l5 5M17 9.5l-5 5"/></svg>';
+    keys.append(h("button", { class: "key", id: "k0", type: "button", "aria-label": "0", onclick: () => pressDigit(0) }, digits("0")));
+    keys.append(h("button", { class: "key go", id: "padGo", type: "button", onclick: padGo }, "Go"));
+  })();
+
+  // ---------- wiring ----------
+  $("#prev").addEventListener("click", () => { if (cur > 1 && !spinning) { NL.sfx.tick(); go(cur - 1, { tap: true }); } });
+  $("#next").addEventListener("click", () => { if (cur < MAX && !spinning) { NL.sfx.tick(); go(cur + 1, { tap: true }); } });
+  $("#random").addEventListener("click", spin);
+  $("#today").addEventListener("click", () => { today = numberOfTheDay(); NL.sfx.whoosh(); go(today, { tap: true }); });
+  $("#openPad").addEventListener("click", openPad);
+  $("#padClose").addEventListener("click", closePad);
+  padWrap.addEventListener("click", (e) => { if (e.target === padWrap) closePad(); });
+  $("#toBook").addEventListener("click", () => $("#book").scrollIntoView({ behavior: NL.calm() ? "auto" : "smooth", block: "start" }));
+  $("#screen").addEventListener("click", () => { if (spinning) return; const t = ++voiceToken; sayWait(NL.sayNumber(cur), t); });
+
+  const seg = $("#rangeSeg");
+  RANGES.forEach((r) => seg.append(h("button", { class: "nl-btn", type: "button", "data-r": r, "aria-pressed": String(r === range),
+    onclick: () => { range = r; NL.store.set("explorer-range", r); NL.sfx.tick(); seg.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.r) === r))); } }, fmt(r))));
+
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!padWrap.hidden) {
+      if (/^[0-9]$/.test(e.key)) { pressDigit(Number(e.key)); e.preventDefault(); }
+      else if (e.key === "Backspace") { padBack(); e.preventDefault(); }
+      else if (e.key === "Enter") { padGo(); e.preventDefault(); }
+      else if (e.key === "Escape") closePad();
+      return;
+    }
+    if (e.target.closest && e.target.closest("button, a") && (e.key === "Enter" || e.key === " ")) return;
+    if (e.key === "ArrowLeft") $("#prev").click();
+    else if (e.key === "ArrowRight") $("#next").click();
+  });
+
+  window.addEventListener("hashchange", () => { const v = parseHash(); if (v && v !== cur) go(v); });
+  let lastW = innerWidth, rt = 0;
+  window.addEventListener("resize", () => {
+    if (Math.abs(innerWidth - lastW) < 8) return;
+    lastW = innerWidth; clearTimeout(rt);
+    rt = setTimeout(() => { renderRects(cur); renderTree(cur); }, 150);
+  });
+
+  // ---------- open in a working state ----------
+  const last = NL.store.get("explorer-last", 0);
+  go(parseHash() || (inBook(last) ? last : today));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => renderTree(cur));
+})();
+</script>
+</body>
+</html>

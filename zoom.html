@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>Number Line Zoom · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  .zoom-machine { display: grid; gap: 12px; padding: 12px; }
+  @media (min-width: 560px) { .zoom-machine { padding: 16px; gap: 14px; } }
+
+  /* readout above the line */
+  .readout { display: grid; gap: 6px; padding: 2px 6px 0; min-width: 0; }
+  .ro-range { font-family: var(--font-display); font-weight: 600; font-size: 21px; line-height: 30px; height: 30px; white-space: nowrap; overflow: hidden; }
+  .ro-range .nl-digits { font-weight: 700; }
+  .ro-step { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-weight: 700; font-size: 15px; color: #c3cbf0; }
+  .ro-step b { font-family: var(--font-display); font-weight: 700; color: var(--window-fg); font-variant-numeric: tabular-nums; }
+  .ro-step > span:first-child { flex-basis: 100%; }
+  .ro-chip { font-weight: 800; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.1); color: #dfe4ff; }
+  @media (min-width: 560px) { .ro-range { font-size: 25px; } .ro-step { font-size: 16px; } .ro-step > span:first-child { flex-basis: auto; } }
+
+  /* the number line stage */
+  .stage { position: relative; padding: 0; height: 236px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+  .stage.grabbing { cursor: grabbing; }
+  .stage canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+  @media (min-width: 560px) { .stage { height: 290px; } }
+
+  /* Block Buddy */
+  .buddy { position: absolute; left: 0; top: 0; width: 52px; height: 54px; padding: 0; border: 0; background: none; color: inherit;
+    touch-action: none; cursor: grab; will-change: transform; z-index: 3; -webkit-user-select: none; user-select: none; }
+  .buddy:focus-visible { outline: none; }
+  .buddy:focus-visible .bod .cube { outline: 3px solid var(--focus); outline-offset: 3px; }
+  .bod { position: absolute; inset: 0; }
+  .cube { position: absolute; left: 4px; top: 0; width: 44px; height: 44px; border-radius: 10px; background: var(--c, var(--d3));
+    box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.2), inset 0 4px 0 rgba(255, 255, 255, 0.3), 0 5px 12px rgba(0, 0, 0, 0.4); transition: background-color 0.15s; }
+  .cube::before { /* eyes, same as the shared cube face */
+    content: ""; position: absolute; left: 10px; right: 10px; top: 13px; height: 8px;
+    background: radial-gradient(circle at 4px 4px, #1c2448 3.6px, transparent 4.2px), radial-gradient(circle at calc(100% - 4px) 4px, #1c2448 3.6px, transparent 4.2px); }
+  .cube::after { /* smile */
+    content: ""; position: absolute; left: 15px; width: 14px; top: 23px; height: 7px; border: 3px solid #1c2448; border-top: 0; border-radius: 0 0 10px 10px; }
+  .feet { position: absolute; left: 13px; right: 13px; top: 44px; height: 8px;
+    background: linear-gradient(90deg, #1c2448 0 9px, transparent 9px calc(100% - 9px), #1c2448 calc(100% - 9px)); border-radius: 0 0 4px 4px; }
+  .buddy.away { visibility: hidden; }
+
+  .tag { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; text-align: center;
+    background: var(--machine); color: var(--window-fg); border: 2px solid rgba(255, 255, 255, 0.18); border-radius: 14px;
+    padding: 5px 12px 6px; max-width: min(300px, calc(100% - 8px)); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35); will-change: transform; }
+  .tag b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 23px; line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tag small { display: block; font-weight: 700; font-size: 13px; line-height: 1.25; color: #c3cbf0; }
+  .tag small:empty { display: none; }
+  .tag.away { visibility: hidden; }
+
+  /* "Buddy is over there" chip at the edge */
+  .edge { position: absolute; top: 12px; z-index: 4; min-height: 46px; display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; background: var(--machine); color: var(--window-fg); border: 2px solid rgba(255, 255, 255, 0.22);
+    font-family: var(--font-display); font-weight: 600; font-size: 16px; max-width: calc(100% - 16px); }
+  .edge.left { left: 8px; } .edge.right { right: 8px; flex-direction: row-reverse; }
+  .edge svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  .edge i { flex: none; width: 18px; height: 18px; border-radius: 5px; background: var(--c); box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2); }
+  .edge span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* random number roll */
+  .roll { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 5; pointer-events: none; text-align: center;
+    background: var(--machine); border: 3px solid var(--button); border-radius: 18px; padding: 6px 20px 8px; box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4); }
+  .roll small { display: block; white-space: nowrap; font-weight: 800; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #c3cbf0; }
+  .roll .nl-num { display: block; font-size: 38px; line-height: 1.1; white-space: nowrap; }
+
+  /* zoom controls */
+  .zoom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .zoom-row .nl-btn { color: var(--fg); min-height: 58px; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; white-space: nowrap; }
+  .zoom-row .nl-btn svg { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+  #home { grid-column: 1 / -1; min-height: 50px; }
+  @media (min-width: 560px) { .zoom-row { grid-template-columns: 1fr 1fr auto; } #home { grid-column: auto; min-height: 58px; padding-inline: 22px; } }
+
+  /* lower area */
+  .lower { display: grid; gap: 16px; }
+  @media (min-width: 820px) { .lower { grid-template-columns: 1fr 1.15fr; align-items: start; } }
+  .jumps { display: grid; gap: 12px; }
+  .jumps .nl-big { width: 100%; }
+  .jumps .nl-seg { display: grid; grid-template-columns: 1fr 1fr; }
+  .jumps .nl-seg .nl-btn { min-height: 54px; }
+  #jHalf { grid-column: 1 / -1; }
+  .jumps p { margin: 0; font-size: 15px; }
+
+  .facts { display: grid; gap: 8px; }
+  .facts h2 { font-size: 26px; }
+  .fact-num { font-size: 40px; line-height: 1.05; overflow-wrap: anywhere; }
+  .fact-name { font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--muted); }
+  .fact-text { margin: 4px 0 0; font-size: 18px; line-height: 1.45; }
+  .fact-next { margin: 4px 0 0; font-size: 15px; }
+  .facts ul { margin: 2px 0 0; padding-left: 20px; display: grid; gap: 8px; font-size: 17px; }
+  .facts .neg-num { font-family: var(--font-display); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Number Line Zoom<small>Huge, tiny and below zero</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <section class="nl-machine zoom-machine" aria-label="Number line">
+    <div class="readout">
+      <div class="ro-range" id="roRange">You're looking at <span id="roA" class="nl-num">0</span> to <span id="roB" class="nl-num">10</span></div>
+      <div class="ro-step"><span>Each big tick is <b id="roStep">1</b></span><span class="ro-chip" id="roUnit">Zoom level: ones</span></div>
+    </div>
+
+    <div class="stage nl-window" id="stage" tabindex="0" aria-label="Number line. Drag to slide it, pinch or use the zoom buttons to zoom. Arrow keys slide, plus and minus zoom.">
+      <canvas id="line" aria-hidden="true"></canvas>
+      <div class="tag" id="tag" aria-hidden="true"><b id="tagNum"></b><small id="tagWords"></small></div>
+      <button class="buddy" id="buddy" type="button" aria-label="Block Buddy">
+        <span class="bod" id="bod"><span class="cube" id="cube"></span><span class="feet"></span></span>
+      </button>
+      <button class="edge" id="edge" type="button" hidden></button>
+      <div class="roll" id="roll" hidden><small>Random number</small><span class="nl-num" id="rollNum"></span></div>
+    </div>
+
+    <div class="zoom-row">
+      <button class="nl-btn" id="zoomOut" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6"/></svg>Zoom out ×10</button>
+      <button class="nl-btn" id="zoomIn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21M7.5 10.5h6M10.5 7.5v6"/></svg>Zoom in ×10</button>
+      <button class="nl-btn" id="home" type="button">Back to 0–10</button>
+    </div>
+  </section>
+
+  <div class="lower">
+    <section class="nl-card jumps" aria-label="Fly to a number">
+      <div class="nl-label">Fly to a number</div>
+      <button class="nl-big" id="jRandom" type="button">Random number</button>
+      <div class="nl-seg">
+        <button class="nl-btn" id="jMillion" type="button">One million</button>
+        <button class="nl-btn" id="jMinus" type="button">Minus 10</button>
+        <button class="nl-btn" id="jHalf" type="button">Halfway between 0 and 1</button>
+      </div>
+      <p class="nl-muted">Drag Block Buddy along the line. Tap him to hear his number.</p>
+    </section>
+
+    <section class="nl-card facts" id="facts" aria-live="polite"></section>
+  </div>
+  <div class="nl-sr" id="live" aria-live="polite"></div>
+</div>
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const stage = $("stage"), cv = $("line"), g = cv.getContext("2d");
+  const buddyEl = $("buddy"), bod = $("bod"), cube = $("cube"), tagEl = $("tag"), tagNum = $("tagNum"), tagWords = $("tagWords");
+  const edgeEl = $("edge"), rollEl = $("roll"), rollNum = $("rollNum");
+  const btnOut = $("zoomOut"), btnIn = $("zoomIn");
+
+  // ---------- camera: center value and visible width (in number units) ----------
+  const HOME = { c: 5, w: 10 };
+  const WMAX = 1e12, WMIN = 0.001, CMAX = 1.2e12;
+  const view = { c: HOME.c, w: HOME.w };
+  const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+  // Far from zero, doubles can't place tiny ticks precisely, so the closest zoom depends on where you are.
+  const wMinAt = (c) => Math.max(WMIN, Math.abs(c) * 1e-9);
+  const clampView = () => { view.c = clamp(view.c, -CMAX, CMAX); view.w = clamp(view.w, wMinAt(view.c), WMAX); };
+
+  let W = 320, H = 228, dpr = 1, LY = 150, FS = 15, PAD = 30;
+  // view.w is the span shown between the side paddings, so the ends of 0–10 never touch the frame
+  const PPU = () => (W - 2 * PAD) / view.w;
+  const xToV = (x) => view.c + (x - W / 2) / PPU();
+  const vToX = (v) => W / 2 + (v - view.c) * PPU();
+  let cur = null;          // label step chosen in the last draw
+  let flying = false, busy = false;
+  let buddy = { N: 3n, e: 0 };   // exact value = N × 10^e (e <= 0)
+
+  // ---------- exact number formatting ----------
+  const commas = (s) => s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  /** N × 10^e as text with commas; decimals keep only the digits they need (0.010 → 0.01). */
+  function fmtExact(N, e, minus = "−") {
+    const neg = N < 0n, a = neg ? -N : N;
+    let s;
+    if (e >= 0) s = commas((a * 10n ** BigInt(e)).toString());
+    else {
+      const d = -e, str = a.toString().padStart(d + 1, "0");
+      const fp = str.slice(-d).replace(/0+$/, "");
+      s = commas(str.slice(0, -d)) + (fp ? "." + fp : "");
+    }
+    return (neg && a !== 0n ? minus : "") + s;
+  }
+  const norm = (N, e) => { while (e < 0 && N % 10n === 0n) { N /= 10n; e++; } while (e > 0) { N *= 10n; e--; } return { N, e }; };
+  const valOf = (b) => (b.e === 0 ? Number(b.N) : Number(b.N) / 10 ** -b.e);
+  const isWhole = (b) => b.e === 0;
+
+  const UNIT = { "-4": "ten-thousandths", "-3": "thousandths", "-2": "hundredths", "-1": "tenths", 0: "ones", 1: "tens", 2: "hundreds",
+    3: "thousands", 4: "ten thousands", 5: "hundred thousands", 6: "millions", 7: "ten millions", 8: "hundred millions",
+    9: "billions", 10: "ten billions", 11: "hundred billions", 12: "trillions" };
+
+  // ---------- "How big is that?" facts: one checkable comparison per power of ten ----------
+  const COUNT = "Counting one number every second, without ever stopping,";
+  const FACTS = {
+    "-3": ["one thousandth", "One millimeter is a thousandth of a meter. A meter stick has 1,000 of them."],
+    "-2": ["one hundredth", "One penny is a hundredth of a dollar. It takes 100 pennies to make one dollar."],
+    "-1": ["one tenth", "Cut a pizza into 10 equal slices. One slice is a tenth of the pizza."],
+    0: ["one", "One nose on your face. Between 0 and 1 there are tenths, hundredths and more hiding. Zoom in to find them."],
+    1: ["ten", "The fingers on two hands."],
+    2: ["one hundred", "100 pennies make one dollar."],
+    3: ["one thousand", "1,000 meters make one kilometer. A grown-up can walk that far in about 12 minutes."],
+    4: ["ten thousand", "10,000 days is about 27 years. Someone who is 5 years old has lived about 1,800 days."],
+    5: ["one hundred thousand", "100,000 seconds is about 28 hours. That is a little more than one whole day."],
+    6: ["one million", `${COUNT} you would reach 1,000,000 in about 11 and a half days.`],
+    7: ["ten million", `${COUNT} you would reach 10,000,000 in about 116 days. That is almost 4 months.`],
+    8: ["one hundred million", `${COUNT} you would reach 100,000,000 in a little more than 3 years.`],
+    9: ["one billion", `${COUNT} you would reach 1,000,000,000 in almost 32 years.`],
+    10: ["ten billion", `${COUNT} you would reach 10,000,000,000 in about 317 years.`],
+    11: ["one hundred billion", `${COUNT} you would reach 100,000,000,000 in about 3,170 years.`],
+    12: ["one trillion", `${COUNT} you would reach 1,000,000,000,000 in about 31,700 years.`],
+  };
+
+  // ---------- colors and canvas text ----------
+  let COL = {};
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement);
+    const v = (n) => cs.getPropertyValue(n).trim();
+    COL = { fg: v("--window-fg") || "#e9edff", digits: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => v(`--d${d}`)),
+      minor: "rgba(233, 237, 255, 0.42)", punct: "rgba(233, 237, 255, 0.72)", neg: "rgba(84, 120, 237, 0.17)", negText: "rgba(180, 196, 255, 0.62)" };
+  }
+  const widths = new Map();
+  const font = () => `600 ${FS}px Fredoka, Nunito, ui-rounded, sans-serif`;
+  function charW(ch) {
+    let w = widths.get(ch);
+    if (w === undefined) {
+      g.font = font(); w = g.measureText(ch).width;
+      if (ch === "−") w *= 0.72;   // the minus glyph carries wide side bearings; tuck the digits in closer
+      widths.set(ch, w);
+    }
+    return w;
+  }
+  const textW = (s) => { let w = 0; for (const ch of s) w += charW(ch); return w; };
+  function drawColored(s, x, y) {
+    g.font = font();
+    for (const ch of s) {
+      g.fillStyle = ch >= "0" && ch <= "9" ? COL.digits[ch] : COL.punct;
+      g.fillText(ch, ch === "−" ? x - charW(ch) * 0.2 : x, y);
+      x += charW(ch);
+    }
+  }
+
+  // ---------- choosing tick spacing so labels never overlap ----------
+  const MS = [1, 2, 5], GAP = 8;
+  const fmtTick = (k, m, e) => fmtExact(BigInt(k) * BigInt(m), e);
+  /** Lay out labels the way draw() does (edge labels slide inward); true if every label fits with a gap. */
+  /** Where a label starts, or null when its tick is too close to the frame to carry one. */
+  const labelX = (x, tw) => (x < PAD * 0.5 || x > W - PAD * 0.5 ? null : clamp(x - tw / 2, 3, W - 3 - tw));
+  function labelsFit(k0, k1, m, e, step, left, ppu) {
+    let prevRight = -Infinity;
+    for (let k = k0; k <= k1; k++) {
+      const tw = textW(fmtTick(k, m, e)), lx = labelX((k * step - left) * ppu, tw);
+      if (lx === null) continue;
+      if (lx < prevRight + GAP) return false;
+      prevRight = lx + tw;
+    }
+    return true;
+  }
+  function chooseStep(left, right, ppu) {
+    const raw = (right - left) / 60, minSpace = Math.min(70, W / 14);   // wide screens get calmer spacing
+    let e = Math.floor(Math.log10(raw)), mi = 0, last = null;
+    for (let guard = 0; guard < 60; guard++) {
+      const m = MS[mi], step = m * 10 ** e;
+      if (step >= raw && step * ppu >= minSpace) {
+        const k0 = Math.ceil(left / step), k1 = Math.floor(right / step);
+        last = { m, e, step, k0, k1 };
+        if (k1 - k0 < 1 || labelsFit(k0, k1, m, e, step, left, ppu)) return last;
+      }
+      if (++mi === 3) { mi = 0; e++; }
+    }
+    return last;
+  }
+  // which finer ticks fit between the big ones
+  const MINOR_DIV = { 1: [10, 5, 2], 2: [4, 2], 5: [10, 5] };
+
+  // ---------- drawing ----------
+  let rafId = 0, shown = {};
+  const schedule = () => { if (!rafId) rafId = requestAnimationFrame(frame); };
+  const snap = (x) => Math.round(x * dpr) / dpr;
+
+  function draw() {
+    const ppu = PPU(), left = xToV(0), right = xToV(W);
+    const X = vToX;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, W, H);
+    g.textBaseline = "alphabetic";
+
+    // below zero gets a cool tint
+    const x0 = X(0);
+    if (x0 > 0) {
+      const xr = Math.min(W, x0);
+      g.fillStyle = COL.neg; g.fillRect(0, 0, xr, H);
+      if (xr > 130) {
+        g.font = `700 13px Nunito, sans-serif`; g.fillStyle = COL.negText;
+        g.fillText("BELOW ZERO", Math.max(10, xr - 104), H - 12);
+      }
+    }
+
+    const st = chooseStep(left, right, ppu);
+    cur = st;
+
+    // minor ticks
+    const div = MINOR_DIV[st.m].find((d) => (st.step / d) * ppu >= 7);
+    if (div) {
+      const ms = st.step / div;
+      const j0 = Math.ceil(left / ms), j1 = Math.floor(right / ms);
+      g.strokeStyle = COL.minor; g.lineWidth = 1.5; g.beginPath();
+      for (let j = j0; j <= j1 && j - j0 < 3000; j++) {
+        if (j % div === 0) continue;
+        const half = div % 2 === 0 && j % (div / 2) === 0;
+        const x = snap(X(j * ms));
+        g.moveTo(x, LY); g.lineTo(x, LY + (half ? 13 : 9));
+      }
+      g.stroke();
+    }
+
+    // the line itself, with arrows: it keeps going both ways
+    g.strokeStyle = COL.fg; g.fillStyle = COL.fg; g.lineWidth = 3; g.lineCap = "round";
+    g.beginPath(); g.moveTo(8, LY); g.lineTo(W - 8, LY); g.stroke();
+    g.beginPath(); g.moveTo(W - 2, LY); g.lineTo(W - 13, LY - 7); g.lineTo(W - 13, LY + 7); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(2, LY); g.lineTo(13, LY - 7); g.lineTo(13, LY + 7); g.closePath(); g.fill();
+    g.lineCap = "butt";
+
+    // big ticks and their labels
+    let prevRight = -Infinity;
+    const ly = LY + 24 + FS * 1.05;
+    g.lineWidth = 2.5; g.strokeStyle = COL.fg;
+    for (let k = st.k0; k <= st.k1; k++) {
+      const x = snap(X(k * st.step));
+      g.beginPath();
+      if (k === 0) { g.lineWidth = 4; g.moveTo(x, LY - 12); g.lineTo(x, LY + 22); g.stroke(); g.lineWidth = 2.5; }
+      else { g.moveTo(x, LY); g.lineTo(x, LY + 18); g.stroke(); }
+      const t = fmtTick(k, st.m, st.e), tw = textW(t);
+      const lx = labelX(x, tw);
+      if (lx === null || lx < prevRight + 8) continue;
+      drawColored(t, lx, ly);
+      prevRight = lx + tw;
+    }
+
+    // Block Buddy
+    const bv = valOf(buddy), bx = X(bv);
+    const onScreen = bx >= 0 && bx <= W;
+    if (onScreen && !flying) {
+      g.beginPath(); g.arc(bx, LY, 5.5, 0, Math.PI * 2);
+      g.fillStyle = buddyColorHex(); g.fill(); g.lineWidth = 2; g.strokeStyle = "#0f1533"; g.stroke();
+    }
+    buddyEl.classList.toggle("away", !onScreen || flying);
+    tagEl.classList.toggle("away", !onScreen || flying);
+    if (onScreen) {
+      buddyEl.style.transform = `translate(${bx - 26}px, ${LY - 53}px)`;
+      const tw = tagEl.offsetWidth, th = tagEl.offsetHeight;
+      tagEl.style.transform = `translate(${clamp(bx - tw / 2, 4, W - tw - 4)}px, ${Math.max(4, LY - 53 - 10 - th)}px)`;
+    }
+    const edgeSide = flying || onScreen ? "" : bx < 0 ? "left" : "right";
+    if (edgeSide !== shown.edge) { shown.edge = edgeSide; paintEdge(); }
+
+    // readout, buttons and facts only change their DOM when something changed
+    // the visible range: the padded edges, rounded to the place value of a big tick
+    const roundTo = (v) => fmtExact(BigInt(Math.round(st.e >= 0 ? v / 10 ** st.e : v * 10 ** -st.e)), st.e);
+    const a = roundTo(xToV(PAD)), b = roundTo(xToV(W - PAD));
+    if (a !== shown.a || b !== shown.b) {
+      shown.a = a; shown.b = b;
+      NL.colorDigits($("roA"), a); NL.colorDigits($("roB"), b);
+      fitRange();
+      stage.setAttribute("aria-label", `Number line from ${a} to ${b}. Drag to slide it. Arrow keys slide, plus and minus zoom.`);
+    }
+    const stepTxt = fmtExact(BigInt(st.m), st.e);
+    if (stepTxt !== shown.step) {
+      shown.step = stepTxt;
+      $("roStep").textContent = stepTxt;
+      $("roUnit").textContent = "Zoom level: " + (UNIT[st.e] ?? "");
+    }
+    const tw = zoomTargetW();
+    btnOut.disabled = tw * 10 > WMAX * 1.001;
+    btnIn.disabled = tw / 10 < wMinAt(view.c) * 0.999;
+    const key = view.c < 0 ? "neg" : String(clamp(Math.floor(Math.log10(view.w) + 1e-9), -3, 12));
+    if (key !== shown.fact) { shown.fact = key; renderFacts(key); }
+  }
+
+  /** Keep "You're looking at A to B" on one line by shrinking it a little for giant numbers. */
+  function fitRange() {
+    const el = $("roRange");
+    el.style.fontSize = "";
+    const base = parseFloat(getComputedStyle(el).fontSize);
+    if (el.scrollWidth > el.clientWidth + 1) el.style.fontSize = Math.max(12, Math.floor(base * el.clientWidth / el.scrollWidth)) + "px";
+  }
+
+  // ---------- Buddy ----------
+  const buddyText = () => fmtExact(buddy.N, buddy.e);
+  const lastDigit = () => { const m = buddyText().match(/(\d)[^\d]*$/); return m ? m[1] : "0"; };
+  const buddyColorHex = () => COL.digits[lastDigit()];
+  function paintBuddy() {
+    const t = buddyText();
+    cube.style.setProperty("--c", NL.digitVar(lastDigit()));
+    NL.colorDigits(tagNum, t);
+    tagWords.textContent = isWhole(buddy) ? NL.words(buddy.N) : "";
+    buddyEl.setAttribute("aria-label", `Block Buddy is at ${t}. Tap to hear the number. Arrow keys move him.`);
+    if (shown.edge) paintEdge();
+  }
+  function setBuddy(N, e) {
+    const nb = norm(N, e);
+    const changed = nb.N !== buddy.N || nb.e !== buddy.e;
+    buddy = nb;
+    if (changed) paintBuddy();
+    return changed;
+  }
+  function paintEdge() {
+    const side = shown.edge;
+    edgeEl.hidden = !side;
+    if (!side) return;
+    edgeEl.className = "edge " + side;
+    const arrow = side === "left" ? '<path d="M15 5l-7 7 7 7"/>' : '<path d="M9 5l7 7-7 7"/>';
+    edgeEl.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${arrow}</svg><i></i><span></span>`;
+    edgeEl.querySelector("i").style.setProperty("--c", NL.digitVar(lastDigit()));
+    NL.colorDigits(edgeEl.querySelector("span"), buddyText());
+    edgeEl.setAttribute("aria-label", `Block Buddy is at ${buddyText()}. Fly to him.`);
+  }
+  function speakBuddy() {
+    if (isWhole(buddy)) NL.sayNumber(Number(buddy.N));
+    else NL.sayText(fmtExact(buddy.N, buddy.e, "-").replace(/,/g, ""));
+  }
+  function hop() {
+    if (NL.calm()) return;
+    bod.animate([{ transform: "translateY(0)" }, { transform: "translateY(-14px)", offset: 0.4 }, { transform: "translateY(0)" }], { duration: 320, easing: "ease-out" });
+  }
+  function dropIn() {
+    if (NL.calm()) return;
+    bod.animate([{ transform: "translateY(-70px)", opacity: 0 }, { transform: "translateY(0)", opacity: 1, offset: 0.6 }, { transform: "translateY(-8px)", offset: 0.8 }, { transform: "translateY(0)" }], { duration: 520, easing: "ease-in" });
+    tagEl.animate([{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }], { duration: 520 });
+  }
+  /** Put Buddy at screen x, rounded to the current zoom precision (the place value of a big tick). */
+  function buddyToX(x) {
+    const q = cur ? cur.e : 0;
+    const v = clamp(xToV(clamp(x, 0, W)), -CMAX, CMAX);
+    const k = Math.round(q >= 0 ? v / 10 ** q : v * 10 ** -q);
+    if (q >= 0) return setBuddy(BigInt(k) * 10n ** BigInt(q), 0);
+    return setBuddy(BigInt(k), q);
+  }
+
+  let bdrag = null, suppressClick = false;
+  buddyEl.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    if (flying) return;
+    stopAnim();
+    buddyEl.setPointerCapture(e.pointerId);
+    bdrag = { id: e.pointerId, x0: e.clientX, moved: false };
+  });
+  buddyEl.addEventListener("pointermove", (e) => {
+    if (!bdrag || e.pointerId !== bdrag.id) return;
+    if (!bdrag.moved && Math.abs(e.clientX - bdrag.x0) > 6) { bdrag.moved = true; buddyEl.style.cursor = "grabbing"; }
+    if (bdrag.moved) { if (buddyToX(localX(e))) NL.sfx.tick(); schedule(); }
+  });
+  const endBuddy = (e) => {
+    if (!bdrag || e.pointerId !== bdrag.id) return;
+    suppressClick = bdrag.moved; bdrag = null; buddyEl.style.cursor = "";
+  };
+  buddyEl.addEventListener("pointerup", endBuddy);
+  buddyEl.addEventListener("pointercancel", endBuddy);
+  buddyEl.addEventListener("click", () => {
+    if (suppressClick) { suppressClick = false; return; }
+    hop(); speakBuddy();
+  });
+  buddyEl.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault(); e.stopPropagation();
+    // move by one unit of the current precision
+    const q = cur ? cur.e : 0, d = e.key === "ArrowLeft" ? -1 : 1, v = valOf(buddy);
+    const k = Math.round(q >= 0 ? v / 10 ** q : v * 10 ** -q) + d;
+    if (q >= 0) setBuddy(BigInt(k) * 10n ** BigInt(q), 0); else setBuddy(BigInt(k), q);
+    NL.sfx.tick();
+    const bx = vToX(valOf(buddy));
+    if (bx < 20 || bx > W - 20) view.c = valOf(buddy);
+    clampView(); schedule();
+  });
+  edgeEl.addEventListener("click", () => { NL.sfx.pop(); flyTo(valOf(buddy), view.w); });
+
+  // ---------- animations ----------
+  let anim = null, inertia = null;
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+  function stopAnim() {
+    inertia = null;
+    if (anim) { const a = anim; anim = null; a.res(false); }
+  }
+  function runAnim(spec) {
+    stopAnim();
+    return new Promise((res) => { anim = Object.assign(spec, { res, t0: performance.now() }); schedule(); });
+  }
+  function frame(now) {
+    rafId = 0;
+    if (anim) {
+      const t = Math.min(1, (now - anim.t0) / anim.dur);
+      anim.step(t);
+      if (t >= 1) { const a = anim; anim = null; a.res(true); }
+    }
+    if (inertia) {
+      const dt = Math.min(40, now - inertia.t); inertia.t = now;
+      view.c -= (inertia.v * dt) / PPU();
+      inertia.v *= Math.pow(0.94, dt / 16);
+      clampView();
+      if (Math.abs(inertia.v) < 0.02) inertia = null;
+    }
+    draw();
+    if (anim || inertia) schedule();
+  }
+  const zoomTargetW = () => (anim && anim.kind === "zoom" ? anim.w1 : view.w);
+
+  /** Smooth zoom-and-travel (van Wijk & Nuij): zooms out, travels, zooms back in. */
+  function interpZoom(c0, w0, c1, w1) {
+    const rho = Math.SQRT2, dx = c1 - c0, d1 = Math.abs(dx);
+    if (d1 < 1e-9 * Math.max(w0, w1)) {
+      const S = Math.log(w1 / w0) / rho;
+      const f = (t) => (t >= 1 ? [c1, w1] : [c0 + t * dx, w0 * Math.exp(rho * t * S)]);
+      f.S = Math.abs(S); return f;
+    }
+    const b0 = (w1 * w1 - w0 * w0 + 4 * d1 * d1) / (4 * w0 * d1);
+    const b1 = (w1 * w1 - w0 * w0 - 4 * d1 * d1) / (4 * w1 * d1);
+    const r0 = -Math.asinh(b0), r1 = -Math.asinh(b1), S = (r1 - r0) / rho;
+    const ch0 = Math.cosh(r0), sh0 = Math.sinh(r0);
+    const f = (t) => {
+      if (t >= 1) return [c1, w1];
+      const s = t * S, u = (w0 / (2 * d1)) * (ch0 * Math.tanh(rho * s + r0) - sh0);
+      return [c0 + u * dx, (w0 * ch0) / Math.cosh(rho * s + r0)];
+    };
+    f.S = S; return f;
+  }
+  function flyTo(c1, w1, kind = "fly") {
+    const zi = interpZoom(view.c, view.w, c1, w1);
+    const dur = NL.calm() ? 650 : clamp(650 + zi.S * 260, 900, 2600);
+    return runAnim({ kind, dur, step(t) { const [c, w] = zi(ease(t)); view.c = c; view.w = w; } });
+  }
+  function zoomBy(f) {
+    const chained = anim && anim.kind === "zoom";
+    let a, fa;
+    if (chained) { a = anim.a; fa = anim.fa; }
+    else {
+      // keep zero still if it is on screen, otherwise zoom around the middle
+      const zx = vToX(0);
+      if (zx >= 0 && zx <= W) { a = 0; fa = (0 - (view.c - view.w / 2)) / view.w; } else { a = view.c; fa = 0.5; }
+    }
+    const base = zoomTargetW();
+    const w1 = clamp(base * f, wMinAt(a + (0.5 - fa) * base * f), WMAX);
+    if (Math.abs(w1 - base) / base < 1e-9) { NL.sfx.soft(); return; }
+    if (f > 1) { NL.tone(NL.midi(67), 0.14, 0.07); NL.tone(NL.midi(60), 0.22, 0.07, "sine", 0.08); }
+    else { NL.tone(NL.midi(60), 0.14, 0.07); NL.tone(NL.midi(67), 0.22, 0.07, "sine", 0.08); }
+    const lw0 = Math.log(view.w), lw1 = Math.log(w1);
+    runAnim({ kind: "zoom", a, fa, w1, dur: NL.calm() ? 250 : 600,
+      step(t) { const w = t >= 1 ? w1 : Math.exp(lw0 + (lw1 - lw0) * ease(t)); view.w = w; view.c = a + (0.5 - fa) * w; } });
+  }
+  btnOut.addEventListener("click", () => zoomBy(10));
+  btnIn.addEventListener("click", () => zoomBy(0.1));
+  $("home").addEventListener("click", () => { NL.sfx.pop(); flyTo(HOME.c, HOME.w); });
+
+  // ---------- panning, pinching, wheel ----------
+  const localX = (e) => e.clientX - cv.getBoundingClientRect().left;
+  const pts = new Map();
+  let gest = null, vel = { v: 0, t: 0, x: 0 };
+  function startGesture() {
+    const p = [...pts.values()];
+    if (p.length === 1) gest = { type: "pan", x0: p[0].x, c0: view.c, ppu: PPU() };
+    else if (p.length >= 2) {
+      const m = (p[0].x + p[1].x) / 2, d = Math.max(20, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y));
+      gest = { type: "pinch", d0: d, w0: view.w, vm: xToV(m) };
+    } else gest = null;
+  }
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target !== stage && e.target !== cv) return;
+    stopAnim();
+    stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: localX(e), y: e.clientY });
+    vel = { v: 0, t: performance.now(), x: localX(e) };
+    stage.classList.add("grabbing");
+    startGesture();
+  });
+  stage.addEventListener("pointermove", (e) => {
+    if (!pts.has(e.pointerId)) return;
+    pts.set(e.pointerId, { x: localX(e), y: e.clientY });
+    if (!gest) return;
+    const p = [...pts.values()];
+    if (gest.type === "pan") {
+      view.c = gest.c0 - (p[0].x - gest.x0) / gest.ppu;
+      const now = performance.now(), dt = Math.max(1, now - vel.t);
+      vel.v = 0.7 * ((p[0].x - vel.x) / dt) + 0.3 * vel.v; vel.t = now; vel.x = p[0].x;
+    } else {
+      const m = (p[0].x + p[1].x) / 2, d = Math.max(20, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y));
+      view.w = clamp(gest.w0 * gest.d0 / d, wMinAt(gest.vm), WMAX);
+      view.c = gest.vm - (m - W / 2) / PPU();
+    }
+    clampView(); schedule();
+  });
+  const endPointer = (e) => {
+    if (!pts.has(e.pointerId)) return;
+    const wasPan = gest && gest.type === "pan" && pts.size === 1;
+    pts.delete(e.pointerId);
+    if (pts.size === 0) {
+      stage.classList.remove("grabbing");
+      gest = null;
+      if (wasPan && !NL.calm() && performance.now() - vel.t < 80 && Math.abs(vel.v) > 0.25) { inertia = { v: vel.v, t: performance.now() }; schedule(); }
+    } else startGesture();
+  };
+  stage.addEventListener("pointerup", endPointer);
+  stage.addEventListener("pointercancel", endPointer);
+
+  function zoomAt(x, f) {
+    const vm = xToV(x);
+    view.w = clamp(view.w * f, wMinAt(vm), WMAX);
+    view.c = vm - (x - W / 2) / PPU();
+    clampView(); schedule();
+  }
+  stage.addEventListener("wheel", (e) => {
+    e.preventDefault(); stopAnim();
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    if (!e.ctrlKey && Math.abs(e.deltaX) > Math.abs(e.deltaY)) { view.c += (e.deltaX * unit) / PPU(); clampView(); schedule(); }
+    else zoomAt(localX(e), Math.exp(e.deltaY * unit * (e.ctrlKey ? 0.01 : 0.002)));
+  }, { passive: false });
+  stage.addEventListener("keydown", (e) => {
+    if (e.target !== stage) return;
+    if (e.key === "ArrowLeft" || e.key === "ArrowRight") { e.preventDefault(); stopAnim(); view.c += (e.key === "ArrowLeft" ? -0.1 : 0.1) * view.w; clampView(); schedule(); }
+    else if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomBy(0.1); }
+    else if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomBy(10); }
+  });
+
+  // ---------- jump buttons ----------
+  const closeW = () => (W >= 600 ? 18 : 10);
+  const live = (t) => { $("live").textContent = t; };
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function jump(N, e, c, w, speak) {
+    NL.sfx.whoosh();
+    hop();
+    await wait(NL.calm() ? 0 : 160);
+    setBuddy(N, e);
+    flying = true; schedule();
+    live(`Flying to ${buddyText()}`);
+    const ok = await flyTo(c, w);
+    flying = false; draw();
+    dropIn();
+    if (ok) { NL.sfx.pop(); await wait(NL.calm() ? 150 : 420); speak(); }
+    return ok;
+  }
+  async function guarded(fn) { if (busy) return; busy = true; try { await fn(); } finally { busy = false; } }
+
+  $("jRandom").addEventListener("click", () => guarded(async () => {
+    const n = NL.randInt(1000000);
+    rollEl.hidden = false;
+    const t0 = performance.now(), dur = NL.calm() ? 350 : 1100;
+    let i = 0;
+    while (performance.now() - t0 < dur) {
+      NL.colorDigits(rollNum, NL.fmt(NL.randInt(1000000)));
+      NL.sfx.blip(i++ % 8);
+      await wait(NL.calm() ? 90 : 75 + i * 4);
+    }
+    NL.colorDigits(rollNum, NL.fmt(n));
+    NL.sfx.chime();
+    if (!NL.calm()) rollNum.animate([{ transform: "scale(0.6)" }, { transform: "scale(1.15)", offset: 0.6 }, { transform: "scale(1)" }], { duration: 380, easing: "ease-out" });
+    await wait(NL.calm() ? 500 : 900);
+    if (!NL.calm()) await rollEl.animate([{ opacity: 1, transform: "translateX(-50%)" }, { opacity: 0, transform: "translateX(-50%) scale(0.85)" }], { duration: 220 }).finished;
+    rollEl.hidden = true;
+    const ok = await jump(BigInt(n), 0, n, closeW(), () => NL.sayNumber(n));
+    if (ok) NL.confetti(1800);
+  }));
+  $("jMillion").addEventListener("click", () => guarded(() => jump(1000000n, 0, 500000, 1e6, () => NL.sayNumber(1000000))));
+  $("jHalf").addEventListener("click", () => guarded(() => jump(5n, -1, 0.5, 1, () => NL.sayText("One half. Zero point five."))));
+  $("jMinus").addEventListener("click", () => guarded(() => jump(-10n, 0, -5, 10, () => NL.sayNumber(-10))));
+
+  // ---------- "How big is that?" card ----------
+  const factsEl = $("facts");
+  function renderFacts(key) {
+    factsEl.textContent = "";
+    const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text) x.textContent = text; factsEl.appendChild(x); return x; };
+    if (key === "neg") {
+      el("div", "nl-label", "How big is that?");
+      el("h2", "", "Below zero");
+      const p = el("p", "fact-text");
+      p.append("Numbers less than zero are called negative numbers. We write them with a minus sign. ");
+      const n = document.createElement("span"); n.className = "neg-num"; NL.colorDigits(n, "−10"); p.append(n, " is ten steps to the left of 0.");
+      const ul = el("ul");
+      [["Temperature. ", "Water freezes at 0 degrees Celsius. On a very cold winter day it can be −10 degrees: ten degrees below zero."],
+       ["Buildings. ", "In some buildings, floor −1 is one floor below the ground floor, and floor −2 is two floors below."]]
+        .forEach(([h, t]) => { const li = document.createElement("li"); const b = document.createElement("b"); b.textContent = h; li.append(b, t); ul.appendChild(li); });
+      return;
+    }
+    const p = Number(key), [name, text] = FACTS[p];
+    el("div", "nl-label", "How big is that?");
+    NL.colorDigits(el("div", "nl-num fact-num"), fmtExact(1n, p));
+    el("div", "fact-name", name);
+    el("p", "fact-text", text);
+    const next = p >= 12 ? "This is as far as the line zooms out." : p <= -3 ? "This is as far as the line zooms in."
+      : `Zoom out ×10 to meet ${fmtExact(1n, p + 1)}. Zoom in ×10 to meet ${fmtExact(1n, p - 1)}.`;
+    el("p", "fact-next nl-muted", next);
+  }
+
+  // ---------- size, fonts, theme ----------
+  function resize() {
+    const w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    W = w; H = h; dpr = Math.min(3, window.devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    FS = W >= 560 ? 19 : 15;
+    PAD = W >= 560 ? 44 : 26;
+    LY = H - (W >= 560 ? 96 : 82);
+    widths.clear();
+    draw();
+    fitRange();
+  }
+  readColors();
+  paintBuddy();
+  new ResizeObserver(resize).observe(stage);
+  window.addEventListener("resize", resize);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { readColors(); schedule(); });
+  if (document.fonts) {
+    const refit = () => { widths.clear(); fitRange(); schedule(); };
+    document.fonts.load(`600 15px Fredoka`).then(refit).catch(() => {});
+    document.fonts.addEventListener("loadingdone", refit);
+  }
+  resize();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Super Calculator · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  /* Layout: the calculator machine (screen, word strip, keypad) on the left; facts, picture and tape on the right.
+     On a phone everything stacks. The screen and strip have fixed heights so the keys never move under a finger. */
+  .calc-layout { display: grid; gap: 16px; align-items: start; }
+  .side { display: grid; gap: 16px; min-width: 0; }
+  @media (min-width: 900px) {
+    .calc-layout { grid-template-columns: minmax(400px, 470px) minmax(0, 1fr); }
+  }
+
+  .calc { padding: 12px 12px 18px; display: grid; gap: 10px; min-width: 0; }
+  .screen {
+    height: 164px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; overscroll-behavior: contain;
+    padding: 10px 14px; scrollbar-width: thin; scrollbar-color: #39457d transparent;
+  }
+  .screen > :first-child { margin-top: auto; }
+  .expr { font-family: var(--font-display); font-weight: 600; font-size: 20px; line-height: 1.25; color: #aab3e0;
+    text-align: right; overflow-wrap: anywhere; min-height: 25px; }
+  .main { font-family: var(--font-display); font-weight: 700; line-height: 1.12; text-align: right; font-size: 58px;
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere; word-break: break-all; }
+  .main.measure { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+  .main.wrap { text-align: left; }
+  .main small { font-size: 0.42em; font-weight: 600; color: #aab3e0; margin-right: 0.25em; word-break: normal; }
+  .main .say { font-size: 0.7em; }
+  .alt { font-family: var(--font-display); font-weight: 600; font-size: 24px; line-height: 1.2; text-align: right; overflow-wrap: anywhere; }
+  .alt:empty { display: none; }
+  .alt small { font-size: 0.72em; color: #aab3e0; font-weight: 600; }
+  .screen .nl-digits span:not(.sym) { text-shadow: 0 0 14px color-mix(in srgb, var(--c) 45%, transparent); }
+  .nl-digits span.sym { color: inherit; }
+  .nl-digits b { font-weight: inherit; }
+  .xop { color: #fff; margin: 0 0.2em; }
+  .par, .neg, .rt { color: #fff; }
+  .rt { margin-right: 0.04em; }
+  sup.pw { font-size: 0.56em; vertical-align: 0; position: relative; top: -0.72em; line-height: 0; margin-left: 0.04em; }
+  .ph { color: #6c77ad; }
+  em.rep { font-style: normal; position: relative; color: #fff; }
+  em.rep::before { content: ""; position: absolute; left: 0.04em; right: 0.04em; top: 0.2em; height: max(2px, 0.07em); border-radius: 2px; background: currentColor; }
+  .main.big-answer { animation: land 0.24s ease-out; }
+  @keyframes land { from { transform: scale(0.94); opacity: 0.35; } to { transform: none; opacity: 1; } }
+
+  .strip { height: 82px; overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px; color: #cfd6ff;
+    font-size: 15px; line-height: 20px; font-weight: 700; scrollbar-width: thin; scrollbar-color: #39457d transparent; }
+  .strip p { margin: 0; }
+  .strip .note { color: var(--button); }
+  .strip .hint { color: #fff; }
+
+  /* keypad */
+  .keys { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; padding-top: 4px; }
+  .k {
+    min-height: 58px; border: none; border-radius: 16px; padding: 0; position: relative;
+    font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1;
+    display: grid; place-items: center; align-content: center; gap: 2px;
+    user-select: none; -webkit-user-select: none; transition: transform 0.05s, box-shadow 0.05s;
+  }
+  .k:active, .k.down { transform: translateY(4px); }
+  .k.dig {
+    background: var(--window); background: color-mix(in srgb, var(--c) 20%, var(--window)); color: var(--c);
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 50%, transparent), 0 5px 0 color-mix(in srgb, var(--c) 55%, #05081a);
+    text-shadow: 0 0 14px color-mix(in srgb, var(--c) 50%, transparent); font-size: 34px;
+  }
+  .k.dig:active, .k.dig.down { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--c) 50%, transparent), 0 1px 0 color-mix(in srgb, var(--c) 55%, #05081a); }
+  .k.op { background: #e9edff; color: var(--machine); box-shadow: 0 5px 0 #8f9bcf; font-size: 38px; font-weight: 600; }
+  .k.op:active, .k.op.down { box-shadow: 0 1px 0 #8f9bcf; }
+  .k.fn, .k.dot { background: #3a4787; color: #fff; box-shadow: 0 5px 0 #141b40; font-size: 24px; }
+  .k.dot { font-size: 40px; }
+  .k.fn:active, .k.fn.down, .k.dot:active, .k.dot.down { box-shadow: 0 1px 0 #141b40; }
+  .k.fn small { font-family: var(--font-body); font-size: 10.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #c3cbf3; }
+  .k.fn sup { font-size: 0.6em; vertical-align: 0; position: relative; top: -0.55em; }
+  .k.fn svg { width: 26px; height: 26px; }
+  .k.eq { grid-row: span 2; background: var(--button); color: var(--button-fg); box-shadow: 0 7px 0 var(--button-edge); font-size: 50px; }
+  .k.eq:active, .k.eq.down { box-shadow: 0 2px 0 var(--button-edge); transform: translateY(5px); }
+  .k.zero { grid-column: span 2; }
+  .k[aria-disabled="true"] { opacity: 0.6; }
+
+  /* about card */
+  .about { display: grid; gap: 12px; }
+  .about h2, .tape h2 { font-size: 21px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .facts { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .facts li { padding-left: 16px; position: relative; overflow-wrap: anywhere; }
+  .facts li::before { content: ""; position: absolute; left: 2px; top: 0.55em; width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .facts b { font-family: var(--font-display); font-weight: 600; }
+  .pic { display: grid; gap: 10px; min-width: 0; }
+  .pic:empty { display: none; }
+  .pic .cap { font-family: var(--font-display); font-weight: 600; font-size: 17px; }
+  .cubes { display: grid; gap: 4px; grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); }
+  .cube { border-radius: 24%; background: var(--c); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18), inset 0 2px 0 rgba(255,255,255,.3); }
+  .cube.ring { box-shadow: inset 0 0 0 3px rgba(255,255,255,.6), inset 0 -3px 0 rgba(0,0,0,.18); }
+  .cube.pop { animation: pop 0.3s ease-out both; animation-delay: calc(var(--i) * 14ms); }
+  @keyframes pop { from { transform: scale(0.2); opacity: 0; } 70% { transform: scale(1.1); opacity: 1; } to { transform: none; } }
+  .groups { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
+  .group { border: 2px dashed var(--line); border-radius: 14px; padding: 7px; display: grid; gap: 4px;
+    grid-template-columns: repeat(var(--cols), var(--s)); grid-auto-rows: var(--s); min-width: 40px; min-height: 40px; }
+  .leftover { display: grid; gap: 6px; justify-items: start; }
+  .leftover .group { border-style: solid; border-color: var(--muted); }
+  .leftover span { font-weight: 800; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .line-svg { width: 100%; max-width: 560px; height: auto; display: block; overflow: visible; }
+  .pic .nl-blocks { max-width: 100%; }
+
+  /* history tape */
+  .tape { display: grid; gap: 10px; }
+  .tape-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .tape-row {
+    width: 100%; min-height: 52px; text-align: right; border: none; border-radius: 14px; padding: 8px 14px;
+    background: var(--window); color: var(--window-fg); box-shadow: 0 3px 0 var(--machine-edge);
+    display: grid; gap: 1px; font-family: var(--font-display);
+  }
+  .tape-row:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--machine-edge); }
+  .tape-row .te { font-size: 15px; font-weight: 600; color: #aab3e0; overflow-wrap: anywhere; }
+  .tape-row .tr { font-size: 22px; font-weight: 700; overflow-wrap: anywhere; }
+  .tape-row .tr small { font-size: 0.62em; color: #aab3e0; font-weight: 600; }
+  .tape-empty { margin: 0; }
+
+  @media (min-width: 900px) {
+    .screen { height: 190px; }
+    .main { font-size: 64px; }
+    .k { min-height: 64px; }
+    .strip { height: 86px; font-size: 16px; line-height: 21px; }
+  }
+  @media (max-width: 360px) {
+    .k { min-height: 52px; font-size: 26px; }
+    .k.dig { font-size: 30px; }
+    .k.fn small { font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Super Calculator<small>Exact answers, any size</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <main class="calc-layout">
+    <section class="nl-machine calc" aria-label="Calculator">
+      <div class="nl-window screen" id="screen">
+        <div class="expr nl-digits" id="expr"></div>
+        <div class="main nl-digits" id="main"></div>
+        <div class="alt nl-digits" id="alt"></div>
+      </div>
+      <div class="strip" id="strip"></div>
+      <div class="keys" id="keys"></div>
+      <p class="nl-sr" id="live" aria-live="polite"></p>
+    </section>
+
+    <div class="side">
+      <section class="nl-card about" id="about" aria-label="About this answer"></section>
+      <section class="nl-card tape" aria-label="History tape">
+        <h2>History tape</h2>
+        <p class="nl-muted" style="margin:0">Your last 20 sums. Tap one to bring its answer back.</p>
+        <ol class="tape-list" id="tape"></ol>
+      </section>
+    </div>
+  </main>
+</div>
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+
+  /* =====================================================================
+     Exact math. Pure functions, no DOM. Every value is a fraction of two
+     BigInts {n, d} with d > 0 in lowest terms, so nothing is ever rounded.
+     Exposed as window.CalcMath for tests.
+     ===================================================================== */
+  const M = {};
+  const MAX_DIGITS = 2000;
+  const MAX_TYPED = 60;   // digits in one typed number
+  const MAX_ITEMS = 60;   // pieces in one sum
+  const OPS = ["+", "−", "×", "÷", "^"];
+
+  class CalcError extends Error { constructor(code, data = {}) { super(code); this.code = code; this.data = data; } }
+  const E = (code, data) => new CalcError(code, data);
+  const abs = (a) => (a < 0n ? -a : a);
+  const gcd = (a, b) => { a = abs(a); b = abs(b); while (b) [a, b] = [b, a % b]; return a; };
+  const digitLen = (x) => abs(x).toString().length;
+  const F = (n, d = 1n) => {
+    if (d === 0n) throw E("divzero", { a: { n, d: 1n } });
+    if (d < 0n) { n = -n; d = -d; }
+    const g = gcd(n, d) || 1n;
+    return { n: n / g, d: d / g };
+  };
+  M.F = F;
+  const size = (f) => {
+    const dn = digitLen(f.n), dd = digitLen(f.d);
+    if (dn > MAX_DIGITS || dd > MAX_DIGITS) throw E("toobig", { digits: Math.max(dn, dd) });
+    return f;
+  };
+  const log10Big = (x) => { const s = x.toString(); return s.length <= 15 ? Math.log10(Number(s)) : Math.log10(Number(s.slice(0, 15))) + (s.length - 15); };
+
+  /** Whole-number square root (floor), any size. */
+  M.isqrt = (n) => {
+    if (n < 0n) throw E("sqrtneg");
+    if (n < 2n) return n;
+    let x = 1n << BigInt(Math.ceil(n.toString(2).length / 2));
+    for (;;) { const y = (x + n / x) >> 1n; if (y >= x) return x; x = y; }
+  };
+  const sqrtExact = (f) => { const rn = M.isqrt(f.n), rd = M.isqrt(f.d); return rn * rn === f.n && rd * rd === f.d ? F(rn, rd) : null; };
+
+  const powF = (a, b) => {
+    if (b.d !== 1n) throw E("powfrac");
+    let k = b.n; const neg = k < 0n; if (neg) k = -k;
+    if (a.n === 0n) { if (neg) throw E("divzero", { a: F(1n) }); return k === 0n ? F(1n) : F(0n); }
+    if (k === 0n) return F(1n);
+    if (a.d === 1n && (a.n === 1n || a.n === -1n)) return F(a.n === -1n && k % 2n === 1n ? -1n : 1n);
+    const big = abs(a.n) > a.d ? abs(a.n) : a.d;
+    const est = Number(k) * log10Big(big);
+    if (!(est <= MAX_DIGITS + 1)) throw E("toobig", { digits: est < 1e15 ? Math.floor(est) + 1 : Infinity });
+    const n = a.n ** k, d = a.d ** k;
+    return size(neg ? F(d, n) : F(n, d));
+  };
+
+  /** Typed text such as "3.25" -> exact fraction 13/4. */
+  M.parseNum = (s) => {
+    const [i, f = ""] = s.split(".");
+    return F(BigInt((i || "0") + f), 10n ** BigInt(f.length));
+  };
+
+  /* Grammar (normal order of operations):
+       expr  := term (("+" | "−") term)*
+       term  := power (("×" | "÷") power)*
+       power := root ("^" power)?          right-associative
+       root  := "√" root | post
+       post  := atom "²"*
+       atom  := "−"? (number | answer)      a minus typed at the start, or after a sign, belongs to the number */
+  M.parse = (items) => {
+    let i = 0;
+    const peek = () => items[i];
+    const isOp = (...s) => peek() && peek().k === "op" && s.includes(peek().s);
+    const atom = () => {
+      let neg = false;
+      if (peek() && peek().k === "neg") { i++; neg = true; }
+      const it = items[i];
+      if (!it || (it.k !== "num" && it.k !== "ans")) throw E("incomplete");
+      i++;
+      let v = it.k === "num" ? M.parseNum(it.s) : F(BigInt(it.n), BigInt(it.d));
+      if (neg) v = F(-v.n, v.d);
+      return { t: "lit", v };
+    };
+    const post = () => { let a = atom(); while (peek() && peek().k === "sq") { i++; a = { t: "sq", a }; } return a; };
+    const root = () => { if (peek() && peek().k === "sqrt") { i++; return { t: "sqrt", a: root() }; } return post(); };
+    const power = () => { const a = root(); if (isOp("^")) { i++; return { t: "bin", op: "^", a, b: power() }; } return a; };
+    const term = () => { let a = power(); while (isOp("×", "÷")) { const op = items[i++].s; a = { t: "bin", op, a, b: power() }; } return a; };
+    const expr = () => { let a = term(); while (isOp("+", "−")) { const op = items[i++].s; a = { t: "bin", op, a, b: term() }; } return a; };
+    if (!items.length) throw E("incomplete");
+    const tree = expr();
+    if (i !== items.length) throw E("incomplete");
+    return tree;
+  };
+
+  M.ev = (t) => {
+    if (t.t === "lit") return t.v;
+    if (t.t === "sq") { const v = M.ev(t.a); return size(F(v.n * v.n, v.d * v.d)); }
+    if (t.t === "sqrt") {
+      const v = M.ev(t.a);
+      if (v.n < 0n) throw E("sqrtneg", { v });
+      const r = sqrtExact(v);
+      if (!r) throw E("irrational", { v });
+      return r;
+    }
+    const a = M.ev(t.a), b = M.ev(t.b);
+    switch (t.op) {
+      case "+": return size(F(a.n * b.d + b.n * a.d, a.d * b.d));
+      case "−": return size(F(a.n * b.d - b.n * a.d, a.d * b.d));
+      case "×": return size(F(a.n * b.n, a.d * b.d));
+      case "÷": if (b.n === 0n) throw E("divzero", { a }); return size(F(a.n * b.d, a.d * b.n));
+      case "^": return powF(a, b);
+    }
+    throw E("incomplete");
+  };
+
+  /** Long division with remainder tracking. A remainder seen before means the digits repeat from there. */
+  M.decimal = (f, maxDigits = 120) => {
+    const neg = f.n < 0n, d = f.d;
+    const n = abs(f.n);
+    const int = n / d;
+    let r = n % d;
+    const digits = [], seen = new Map();
+    let repAt = -1;
+    while (r !== 0n && digits.length < maxDigits) {
+      const key = r.toString();
+      if (seen.has(key)) { repAt = seen.get(key); break; }
+      seen.set(key, digits.length);
+      r *= 10n;
+      digits.push(String(r / d));
+      r %= d;
+    }
+    if (r !== 0n && repAt < 0 && seen.has(r.toString())) repAt = seen.get(r.toString());
+    const cut = repAt < 0 ? digits.length : repAt;
+    return { neg, int, pre: digits.slice(0, cut).join(""), rep: repAt < 0 ? "" : digits.slice(repAt).join(""), truncated: r !== 0n && repAt < 0 };
+  };
+
+  /** Pieces needed to show a value: sign, whole part, then (for fractions) the decimal digits. */
+  M.valueParts = (f, maxFrac = 120) => {
+    if (f.d === 1n) return { neg: f.n < 0n, int: abs(f.n).toString(), whole: true };
+    const x = M.decimal(f, maxFrac);
+    return { neg: x.neg, int: x.int.toString(), pre: x.pre, rep: x.rep, truncated: x.truncated, whole: false };
+  };
+  M.commas = (s) => { let out = ""; const L = s.length; for (let i = 0; i < L; i++) { if (i && (L - i) % 3 === 0) out += ","; out += s[i]; } return out; };
+  M.fmtBig = (x) => (x < 0n ? "−" : "") + M.commas(abs(x).toString());
+  /** Plain text of a value: "3.4", "0.(3)" for repeating digits, "-4". */
+  M.plain = (f) => {
+    const p = M.valueParts(f);
+    let s = (p.neg ? "-" : "") + p.int;
+    if (!p.whole) s += "." + p.pre + (p.rep ? "(" + p.rep + ")" : "") + (p.truncated ? "..." : "");
+    return s;
+  };
+
+  M.evaluate = (items) => {
+    let tree;
+    try { tree = M.parse(items); } catch (e) { return fail(e); }
+    try {
+      const v = M.ev(tree);
+      const res = { ok: true, tree, value: v, whole: v.d === 1n };
+      if (tree.t === "bin" && tree.op === "÷" && !res.whole) {
+        const a = M.ev(tree.a), b = M.ev(tree.b);
+        if (a.d === 1n && b.d === 1n && a.n >= 0n && b.n > 0n) res.rem = { a: a.n, b: b.n, q: a.n / b.n, r: a.n % b.n };
+      }
+      if (!res.whole) res.dec = M.decimal(v);
+      return res;
+    } catch (e) {
+      if (!(e instanceof CalcError)) throw e;
+      if (e.code === "irrational" && tree.t === "sqrt") {
+        let inner;
+        try { inner = M.ev(tree.a); } catch (e2) { return fail(e2.code === "irrational" ? E("sqrtinexact", e2.data) : e2); }
+        return irrational(tree, inner);
+      }
+      if (e.code === "irrational") return fail(E("sqrtinexact", e.data));
+      return fail(e);
+    }
+  };
+  function fail(e) { if (!(e instanceof CalcError)) throw e; return { ok: false, code: e.code, data: e.data || {} }; }
+  function irrational(tree, v) {
+    const lo = M.isqrt(v.n / v.d);
+    const s = M.isqrt((v.n * 10n ** 8n) / v.d);      // floor(√v × 10,000)
+    const t = (s + 5n) / 10n;                          // rounded to thousandths
+    const approx = M.commas((t / 1000n).toString()) + "." + (t % 1000n).toString().padStart(3, "0");
+    return { ok: true, irrational: true, tree, of: v, lo, hi: lo + 1n, approx };
+  }
+
+  /* ---------- number facts ---------- */
+  const modpow = (b, e, m) => { let r = 1n; b %= m; while (e > 0n) { if (e & 1n) r = (r * b) % m; b = (b * b) % m; e >>= 1n; } return r; };
+  const SMALLP = [2n, 3n, 5n, 7n, 11n, 13n, 17n, 19n, 23n, 29n, 31n, 37n, 41n];
+  const MR_SURE = 3317044064679887385961981n; // bases 2..41 are a proof below this
+  /** {prime, sure} for a BigInt. Small factors and Miller-Rabin; unknown for huge numbers with no small factor. */
+  M.primeInfo = (n) => {
+    if (n < 2n) return { prime: false, sure: true };
+    for (let p = 2n; p < 1000n; p += p === 2n ? 1n : 2n) {
+      if (p * p > n) return { prime: true, sure: true };
+      if (n % p === 0n) return { prime: n === p, sure: true, factor: p };
+    }
+    if (n.toString().length > 400) return { unknown: true };
+    let d = n - 1n, s = 0;
+    while ((d & 1n) === 0n) { d >>= 1n; s++; }
+    const bases = n < MR_SURE ? SMALLP : SMALLP.concat([43n, 47n, 53n, 59n, 61n, 67n, 71n, 73n, 79n, 83n, 89n, 97n]);
+    for (const a of bases) {
+      let x = modpow(a, d, n);
+      if (x === 1n || x === n - 1n) continue;
+      let ok = false;
+      for (let i = 1; i < s; i++) { x = (x * x) % n; if (x === n - 1n) { ok = true; break; } }
+      if (!ok) return { prime: false, sure: true };
+    }
+    return { prime: true, sure: n < MR_SURE };
+  };
+
+  const PLACE = ["ones", "tens", "hundreds"];
+  /** Size facts for a big whole number (absolute value a). */
+  M.sizeFacts = (a) => {
+    const names = NL.BIG_NAMES;
+    const digits = a.toString().length;
+    const out = [`This number has ${M.commas(String(digits))} digits.`];
+    const e = digits - 1, g = Math.floor(e / 3), sub = e % 3;
+    if (g >= names.length) {
+      out.push(`It's bigger than 1 followed by ${M.commas(String(e))} zeros.`);
+      out.push(`That's past ${names[names.length - 1]}, the biggest number name here.`);
+      return out;
+    }
+    const place = g === 0 ? PLACE[sub] : ["", "ten-", "hundred-"][sub] + names[g] + "s";
+    out.push(`Its biggest place is the ${place} place.`);
+    let gi = g, unit = 10n ** BigInt(3 * gi);
+    let tenths = (a * 10n + unit / 2n) / unit;
+    if (tenths >= 10000n && gi + 1 < names.length) { gi++; unit = 10n ** BigInt(3 * gi); tenths = (a * 10n + unit / 2n) / unit; }
+    let num;
+    if (tenths < 100n) num = (tenths / 10n).toString() + (tenths % 10n ? "." + (tenths % 10n) : "");
+    else num = M.commas(((a + unit / 2n) / unit).toString());
+    const exact = (tenths * unit) === a * 10n;
+    out.push(`That's ${exact ? "exactly" : "about"} ${num} ${names[gi]}.`);
+    return out;
+  };
+
+  /** Chips and short explanation lines for a result. */
+  M.facts = (res) => {
+    const chips = [], lines = [], size = [];
+    if (!res.ok) return { chips, lines, size };
+    if (res.irrational) {
+      const x = M.plain(res.of);
+      chips.push({ text: "Not a square number" });
+      lines.push(`√${x} is not a whole number or a fraction. Its digits go on forever and never repeat.`);
+      return { chips, lines, size };
+    }
+    const v = res.value;
+    if (res.whole) {
+      const n = v.n, a = abs(n), digits = a.toString().length;
+      const even = n % 2n === 0n;
+      chips.push({ text: even ? "Even" : "Odd" });
+      lines.push(even ? "Even: it splits into two equal groups." : "Odd: two equal groups leave one left over.");
+      if (n >= 2n) {
+        const p = M.primeInfo(n);
+        if (p.prime && p.sure) { chips.push({ text: "Prime", star: true }); lines.push(`Prime: only 1 and ${M.fmtBig(n)} divide into it evenly.`); }
+        else if (p.prime) { chips.push({ text: "Probably prime", star: true }); lines.push("Probably prime: it passed every prime test here, but it is too big to be completely sure."); }
+        else if (p.factor && digits > 3) lines.push(`Not prime: ${M.fmtBig(p.factor)} divides into it evenly.`);
+      }
+      if (n >= 0n) {
+        const r = M.isqrt(n);
+        if (r * r === n) {
+          chips.push({ text: "Square", star: true });
+          lines.push(digitLen(r) <= 15 ? `Square: ${M.fmtBig(r)} × ${M.fmtBig(r)} makes it.` : `Square: a ${M.commas(String(digitLen(r)))}-digit number times itself makes it.`);
+        }
+      }
+      chips.push({ text: `${M.commas(String(digits))} ${digits === 1 ? "digit" : "digits"}` });
+      if (n < 0n) { chips.push({ text: "Negative" }); lines.push(`Negative: it is ${M.fmtBig(a)} less than zero.`); }
+      if (a >= 1000000n) size.push(...M.sizeFacts(a));
+    } else {
+      const x = res.dec;
+      chips.push({ text: x.rep ? "Repeating decimal" : "Decimal", star: !!x.rep });
+      if (x.rep) lines.push(`Repeating: the ${x.rep.length === 1 ? "digit" : "digits"} under the line go on forever.`);
+      if (res.rem) lines.push(`Remainder: ${M.fmtBig(res.rem.a)} shared into ${M.fmtBig(res.rem.b)} groups is ${M.fmtBig(res.rem.q)} each, with ${M.fmtBig(res.rem.r)} left over.`);
+      if (digitLen(v.d) <= 12 && digitLen(v.n) <= 12) lines.push(`As a fraction: ${M.fmtBig(v.n)}/${M.fmtBig(v.d)}.`);
+      if (v.n < 0n) { chips.push({ text: "Negative" }); lines.push("Negative: it is less than zero."); }
+    }
+    return { chips, lines, size };
+  };
+
+  /** Which picture fits this answer, if any. */
+  M.picture = (res) => {
+    if (!res.ok || res.irrational) return null;
+    const t = res.tree, v = res.value;
+    const W = (x) => x.d === 1n;
+    if (t.t === "bin") {
+      const a = M.ev(t.a), b = M.ev(t.b);
+      if (t.op === "×" && W(a) && W(b) && a.n >= 1n && b.n >= 1n && a.n <= 12n && b.n <= 12n) return { kind: "array", a: Number(a.n), b: Number(b.n) };
+      if (t.op === "+" && W(a) && W(b) && a.n >= 0n && b.n >= 0n && v.n <= 20n) return { kind: "add", a: Number(a.n), b: Number(b.n) };
+      if (t.op === "÷" && W(a) && W(b) && a.n >= 0n && a.n <= 100n && b.n >= 1n && b.n <= 12n)
+        return { kind: "share", a: Number(a.n), b: Number(b.n), q: Number(a.n / b.n), r: Number(a.n % b.n) };
+    }
+    if (W(v) && v.n >= 0n && v.n <= 9999n) return { kind: "blocks", n: Number(v.n) };
+    if (W(v) && v.n < 0n && v.n >= -20n) return { kind: "line", n: Number(v.n) };
+    return null;
+  };
+
+  /* ---------- words ---------- */
+  const spell = (s) => [...s].map((c) => NL.words(Number(c))).join(" ");
+  M.wholeWords = (n) => digitLen(n) > 66 ? "This number is too big for number names. The biggest name here, vigintillion, has 64 digits." : NL.words(n);
+  M.decimalWords = (x) => {
+    const head = (x.neg ? "negative " : "") + NL.words(x.int);
+    const tail = x.pre + x.rep;
+    if (x.truncated || tail.length > 16 || digitLen(x.int) > 30) return null;
+    return `${head} point ${spell(tail)}${x.rep ? " repeating" : ""}`;
+  };
+  /** The words shown under an answer (and spoken for anything that isn't a plain whole number). */
+  M.answerWords = (res) => {
+    if (!res.ok) return "";
+    if (res.irrational) return `about ${NL.words(res.lo)} point ${spell(res.approx.split(".")[1])}`;
+    if (res.whole) return M.wholeWords(res.value.n);
+    const dw = M.decimalWords(res.dec);
+    if (res.rem && (!dw || !res.dec.rep)) return `${NL.words(res.rem.q)} remainder ${NL.words(res.rem.r)}` + (dw ? `, or ${dw}` : "");
+    return dw || `a little more than ${NL.words(res.dec.int)}${res.dec.neg ? " below zero" : ""}`;
+  };
+
+  M.message = (res) => {
+    const d = res.data || {};
+    switch (res.code) {
+      case "divzero": {
+        const a = d.a;
+        if (a && a.d === 1n && a.n > 0n && a.n <= 1000000n) return { title: "No answer", text: `Dividing means sharing into groups. You can't share ${M.fmtBig(a.n)} into zero groups, because there are no groups to put them in.` };
+        if (a && a.n === 0n) return { title: "No answer", text: "Dividing means sharing into groups. With zero groups there is nothing to share into, so there is no answer." };
+        return { title: "No answer", text: "Dividing means sharing into groups. You can't share things into zero groups, so dividing by zero has no answer." };
+      }
+      case "toobig":
+        return { title: "Too many digits!", text: Number.isFinite(d.digits)
+          ? `That number is too big for the screen. It would need about ${M.commas(String(d.digits))} digits, and this screen holds up to 2,000.`
+          : "That number is too big for the screen. It would need far more than 2,000 digits." };
+      case "sqrtneg": return { title: "No answer", text: "No number times itself makes a negative number, so a negative number has no square root here." };
+      case "sqrtinexact": return { title: "Try it alone", text: `√${d.v ? M.plain(d.v) : ""} is not a whole number. Press √ on it by itself to see where it lands.` };
+      case "powfrac": return { title: "Whole powers only", text: "The little number up top must be a whole number, like 2 to the power of 3." };
+      default: return { title: "Not finished", text: "Finish the sum with a number, then press =." };
+    }
+  };
+
+  /* ---------- keys: a pure reducer (state, key) -> next state + what to do ---------- */
+  const endsOperand = (it) => !!it && (it.k === "num" || it.k === "ans" || it.k === "sq");
+  const hasBinary = (items) => items.some((it) => it.k === "op");
+  const trimDot = (it) => { if (it && it.k === "num" && it.s.endsWith(".")) it.s = it.s.slice(0, -1); };
+  M.initial = () => ({ items: [], answered: false, ans: null });
+  M.press = (st, key) => {
+    let items = st.items.map((x) => ({ ...x }));
+    const soft = (hint = "") => ({ items: st.items, answered: st.answered, ans: st.ans, action: "soft", hint });
+    const go = (action = "edit") => ({ items, answered: action === "eval", ans: st.ans, action });
+    if (key === "C") { items = []; return go("clear"); }
+    if (key === "=") {
+      if (st.answered) return { ...st, action: "respeak" };
+      const last = items[items.length - 1];
+      if (!last) return soft();
+      if (!endsOperand(last)) return soft("Add a number after the sign, then press =.");
+      trimDot(last);
+      return go("eval");
+    }
+    const isDigit = /^[0-9]$/.test(key), isRand = key.startsWith("rand:");
+    if (st.answered) {
+      if (isDigit || key === "." || isRand) items = [];
+      else if (OPS.includes(key) || key === "sq" || key === "sqrt") {
+        if (!st.ans) return soft("Type a number to start a new sum.");
+        items = [{ k: "ans", n: st.ans.n.toString(), d: st.ans.d.toString() }];
+      }
+      // Backspace keeps the finished sum so it can be fixed.
+    }
+    const last = items[items.length - 1];
+    const full = items.length >= MAX_ITEMS;
+    if (isDigit || isRand) {
+      const val = isRand ? key.slice(5) : key;
+      if (last && last.k === "num") {
+        if (isRand) last.s = val;
+        else {
+          if (last.s.replace(".", "").length >= MAX_TYPED) return soft("That's as many digits as one number can hold.");
+          last.s = last.s === "0" ? val : last.s + val;
+        }
+      } else if (endsOperand(last) || full) return soft();
+      else items.push({ k: "num", s: val });
+      return go();
+    }
+    if (key === ".") {
+      if (last && last.k === "num") { if (last.s.includes(".")) return soft(); last.s += "."; }
+      else if (endsOperand(last) || full) return soft();
+      else items.push({ k: "num", s: "0." });
+      return go();
+    }
+    if (OPS.includes(key)) {
+      if (!last) { if (key === "−") { items.push({ k: "neg" }); return go(); } return soft(); }
+      if (last.k === "op") { if (key === "−") { if (full) return soft(); items.push({ k: "neg" }); } else last.s = key; return go(); }
+      if (last.k === "neg") {
+        if (key === "−") return soft();
+        items.pop();
+        const p = items[items.length - 1];
+        if (p && p.k === "op") p.s = key;
+        return go();
+      }
+      if (last.k === "sqrt") { if (key !== "−" || full) return soft(); items.push({ k: "neg" }); return go(); }
+      if (full) return soft();
+      trimDot(last);
+      items.push({ k: "op", s: key });
+      return go();
+    }
+    if (key === "sq") {
+      if (!endsOperand(last) || full) return soft();
+      trimDot(last);
+      items.push({ k: "sq" });
+      return go(hasBinary(items) ? "edit" : "eval");
+    }
+    if (key === "sqrt") {
+      if (full) return soft();
+      if (endsOperand(last)) {
+        trimDot(last);
+        let j = items.length - 1;
+        while (items[j].k === "sq") j--;
+        if (items[j - 1] && items[j - 1].k === "neg") j--;
+        while (items[j - 1] && items[j - 1].k === "sqrt") j--;
+        items.splice(j, 0, { k: "sqrt" });
+        return go(hasBinary(items) ? "edit" : "eval");
+      }
+      if (last && last.k === "neg") return soft();
+      items.push({ k: "sqrt" });
+      return go();
+    }
+    if (key === "back") {
+      if (!last) return soft();
+      if (last.k === "num") { last.s = last.s.slice(0, -1); if (!last.s) items.pop(); }
+      else items.pop();
+      return go();
+    }
+    return soft();
+  };
+
+  /** Test helper: type a string like "17÷5" or "49√" and get the result. */
+  const CHARMAP = { "-": "−", "*": "×", x: "×", "/": "÷", "√": "sqrt", "²": "sq" };
+  M.run = (text) => {
+    let st = M.initial(), res = null;
+    const step = (k) => {
+      st = M.press(st, k);
+      if (st.action === "eval") { res = M.evaluate(st.items); st.ans = res.ok && !res.irrational ? res.value : null; }
+    };
+    for (const ch of text) { if (ch === " ") continue; step(CHARMAP[ch] || ch); }
+    if (!st.answered) step("=");
+    return M.summary(res);
+  };
+  M.summary = (res) => {
+    if (!res) return { ok: false, code: "incomplete" };
+    if (!res.ok) return { ok: false, code: res.code, message: M.message(res).text };
+    if (res.irrational) return { ok: true, irrational: true, lo: res.lo.toString(), hi: res.hi.toString(), approx: res.approx };
+    const out = { ok: true, text: M.plain(res.value), whole: res.whole };
+    if (res.rem) out.rem = `${res.rem.q} remainder ${res.rem.r}`;
+    if (res.dec) { out.repeating = res.dec.rep; out.pre = res.dec.pre; }
+    return out;
+  };
+  window.CalcMath = M;
+
+  /* =====================================================================
+     Page
+     ===================================================================== */
+  const $ = (id) => document.getElementById(id);
+  const exprEl = $("expr"), mainEl = $("main"), altEl = $("alt"), stripEl = $("strip"), screenEl = $("screen");
+  const aboutEl = $("about"), tapeEl = $("tape"), liveEl = $("live"), keysEl = $("keys");
+  const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+  /** Append one colored span per character; digits get their color, everything else stays plain. */
+  const digits = (parent, text) => {
+    for (const ch of text) {
+      const s = document.createElement("span");
+      s.textContent = ch;
+      if (ch >= "0" && ch <= "9") s.style.setProperty("--c", NL.digitVar(ch)); else s.className = "sym";
+      parent.appendChild(s);
+    }
+    return parent;
+  };
+  const fmtTyped = (s) => { const [i, f] = s.split("."); return M.commas(i) + (f !== undefined ? "." + f : ""); };
+  /** A value with commas; repeating digits get a line on top. maxWhole shortens huge numbers (tape only). */
+  const renderValue = (parent, f, { maxFrac = 120, maxWhole = Infinity } = {}) => {
+    const p = M.valueParts(f, maxFrac);
+    if (p.neg) parent.append(h("b", "neg", "−"));
+    if (p.int.length > maxWhole) {
+      digits(parent, M.commas(p.int).slice(0, 11).replace(/,$/, ""));
+      parent.append(h("span", "sym", "…"));
+      parent.append(h("small", null, ` (${M.commas(String(p.int.length))} digits)`));
+      return parent;
+    }
+    digits(parent, M.commas(p.int));
+    if (!p.whole) {
+      digits(parent, ".");
+      if (p.pre) digits(parent, p.pre);
+      if (p.rep) { const r = h("em", "rep"); digits(r, p.rep); parent.append(r); }
+      if (p.truncated) parent.append(h("span", "sym", "…"));
+    }
+    return parent;
+  };
+  /** Draw a sum as typed: powers go up as little numbers, √ and ² as written. */
+  const renderItems = (parent, items, compact = false) => {
+    let stack = [parent], closeAt = -1;
+    const cur = () => stack[stack.length - 1];
+    items.forEach((it, i) => {
+      if (it.k === "op" && it.s === "^") { const s = h("sup", "pw"); cur().append(s); stack.push(s); return; }
+      if (it.k === "op") { stack = [parent]; parent.append(h("b", "xop", it.s)); return; }
+      const c = cur();
+      if (it.k === "neg") {
+        const nx = items[i + 2];
+        if (nx && (nx.k === "sq" || (nx.k === "op" && nx.s === "^"))) { c.append(h("b", "par", "(")); closeAt = i + 1; }
+        c.append(h("b", "neg", "−"));
+        return;
+      }
+      if (it.k === "sqrt") { c.append(h("b", "rt", "√")); return; }
+      if (it.k === "sq") { const s = h("sup", "pw"); digits(s, "2"); c.append(s); return; }
+      if (it.k === "num") digits(c, fmtTyped(it.s));
+      else if (it.k === "ans") renderValue(c, F(BigInt(it.n), BigInt(it.d)), compact ? { maxFrac: 12, maxWhole: 15 } : {});
+      if (i === closeAt) c.append(h("b", "par", ")"));
+    });
+    const last = items[items.length - 1];
+    if (!compact && last && last.k === "op" && last.s === "^") cur().append(h("b", "ph", "□"));
+    return parent;
+  };
+  const plainItems = (items) => items.map((it) => it.k === "num" ? it.s : it.k === "ans" ? M.plain(F(BigInt(it.n), BigInt(it.d))) :
+    it.k === "op" ? ` ${it.s} ` : it.k === "neg" ? "−" : it.k === "sqrt" ? "√" : "²").join("").replace(/\^ ?|\s\^\s/g, "^");
+
+  /* ---------- state ---------- */
+  let st = M.initial();
+  let res = null;          // the answer on screen (when st.answered)
+  let hint = "";
+  let rolling = null;     // while the random key spins: a function that lands it at once
+  let speakTok = 0;
+  let history = NL.store.get("calc-history", []);
+  if (!Array.isArray(history)) history = [];
+
+  /* ---------- screen ---------- */
+  function fitMain() {
+    const max = innerWidth >= 900 ? 64 : 58, min = 26;
+    mainEl.style.fontSize = max + "px";
+    mainEl.classList.add("measure");
+    const w = mainEl.clientWidth, sw = mainEl.scrollWidth;
+    mainEl.classList.remove("measure");
+    let fs = max;
+    if (sw > w) fs = Math.max(min, Math.floor((max * w) / sw * 0.97));
+    mainEl.style.fontSize = fs + "px";
+    mainEl.classList.toggle("wrap", (sw * fs) / max > w + 1);
+  }
+
+  function renderScreen(fresh = false) {
+    exprEl.textContent = ""; mainEl.textContent = ""; altEl.textContent = ""; stripEl.textContent = "";
+    mainEl.classList.remove("big-answer");
+    const lines = [];
+    if (st.answered && res) {
+      renderItems(exprEl, st.items);
+      exprEl.append(h("b", "xop", "="));
+      if (!res.ok) {
+        const m = M.message(res);
+        mainEl.append(h("span", "say", m.title));
+        lines.push(["hint", m.text]);
+      } else if (res.irrational) {
+        mainEl.append(h("small", null, "about"));
+        digits(mainEl, res.approx);
+        altEl.append(h("small", null, "between "));
+        digits(altEl, M.commas(res.lo.toString()));
+        altEl.append(h("small", null, " and "));
+        digits(altEl, M.commas(res.hi.toString()));
+        if (res.of.d === 1n && digitLen(res.hi) <= 8) {
+          const lo = res.lo, hi = res.hi;
+          lines.push(["", `${M.fmtBig(lo)} × ${M.fmtBig(lo)} = ${M.fmtBig(lo * lo)} and ${M.fmtBig(hi)} × ${M.fmtBig(hi)} = ${M.fmtBig(hi * hi)}, so √${M.fmtBig(res.of.n)} is between ${M.fmtBig(lo)} and ${M.fmtBig(hi)}.`]);
+        }
+        lines.push(["", M.answerWords(res)]);
+      } else {
+        renderValue(mainEl, res.value);
+        if (res.rem) {
+          altEl.append(h("small", null, "or "));
+          digits(altEl, M.commas(res.rem.q.toString()));
+          altEl.append(h("small", null, " remainder "));
+          digits(altEl, M.commas(res.rem.r.toString()));
+        }
+        if (res.negNote) lines.push(["note", "Below zero! An answer less than zero is called negative."]);
+        if (res.dec && res.dec.rep) lines.push(["note", "The line on top marks digits that repeat forever."]);
+        if (res.whole && digitLen(res.value.n) > 60) lines.push(["note", `Scroll the screen to see all ${M.commas(String(digitLen(res.value.n)))} digits.`]);
+        lines.push(["", M.answerWords(res)]);
+      }
+      if (fresh && !NL.calm()) mainEl.classList.add("big-answer");
+    } else {
+      if (st.items.length) renderItems(mainEl, st.items); else digits(mainEl, "0");
+      const last = st.items[st.items.length - 1];
+      if (last && last.k === "num" && !last.s.includes(".")) lines.push(["", M.wholeWords(BigInt(last.s))]);
+    }
+    if (hint) lines.unshift(["hint", hint]);
+    for (const [cls, text] of lines) if (text) stripEl.append(h("p", cls, text));
+    fitMain();
+    screenEl.scrollTop = st.answered ? 0 : screenEl.scrollHeight;
+    stripEl.scrollTop = 0;
+  }
+
+  /* ---------- about card: facts + picture ---------- */
+  function renderAbout(animate) {
+    aboutEl.textContent = "";
+    aboutEl.append(h("h2", null, "About this answer"));
+    if (!res) return;
+    if (!res.ok) {
+      const m = M.message(res);
+      aboutEl.append(h("p", null, m.text));
+      aboutEl.lastChild.style.margin = "0";
+      return;
+    }
+    const f = M.facts(res);
+    const chips = h("div", "chips");
+    for (const c of f.chips) chips.append(h("span", "nl-chip" + (c.star ? " star" : ""), c.text));
+    aboutEl.append(chips);
+    const ul = h("ul", "facts");
+    for (const s of f.size.concat(f.lines)) ul.append(h("li", null, s));
+    if (ul.children.length) aboutEl.append(ul);
+    const spec = M.picture(res);
+    if (spec) aboutEl.append(drawPicture(spec, animate && !NL.calm()));
+  }
+
+  const cube = (color, i, animate, cls = "") => {
+    const c = h("div", "cube" + (cls ? " " + cls : "") + (animate ? " pop" : ""));
+    c.style.setProperty("--c", color);
+    c.style.setProperty("--i", i);
+    return c;
+  };
+  function picWidth() { return Math.max(240, aboutEl.clientWidth - 36); }
+  function drawPicture(spec, animate) {
+    const pic = h("div", "pic");
+    const W = picWidth(), gap = 4;
+    if (spec.kind === "array") {
+      const { a, b } = spec;
+      const s = Math.max(14, Math.min(30, Math.floor((W - (b - 1) * gap) / b)));
+      pic.append(h("div", "cap", `${a} ${a === 1 ? "row" : "rows"} of ${b} make ${a * b}.`));
+      const g = h("div", "cubes");
+      g.style.setProperty("--cols", b); g.style.setProperty("--s", s + "px");
+      for (let i = 0; i < a * b; i++) g.append(cube(NL.colorOf(b), i, animate));
+      pic.append(g);
+    } else if (spec.kind === "add") {
+      const { a, b } = spec;
+      const s = Math.max(16, Math.min(30, Math.floor((W - 9 * gap) / 10)));
+      pic.append(h("div", "cap", `${a} and ${b} joined make ${a + b}.`));
+      const g = h("div", "cubes");
+      g.style.setProperty("--cols", 10); g.style.setProperty("--s", s + "px");
+      const ca = NL.colorOf(a), cb = NL.colorOf(b);
+      for (let i = 0; i < a; i++) g.append(cube(ca, i, animate));
+      for (let i = 0; i < b; i++) g.append(cube(cb, a + i, animate, ca === cb ? "ring" : ""));
+      pic.append(g);
+    } else if (spec.kind === "share") {
+      const { a, b, q, r } = spec;
+      const cols = Math.max(1, Math.min(5, q));
+      const s = 20;
+      pic.append(h("div", "cap", r
+        ? `${a} shared into ${b} ${b === 1 ? "group" : "groups"}: ${q} in each, ${r} left over.`
+        : `${a} shared into ${b} ${b === 1 ? "group" : "groups"}: ${q} in each.`));
+      const wrap = h("div", "groups");
+      let i = 0;
+      for (let k = 0; k < b; k++) {
+        const g = h("div", "group");
+        g.style.setProperty("--cols", cols); g.style.setProperty("--s", s + "px");
+        for (let j = 0; j < q; j++) g.append(cube(NL.colorOf(q), i++, animate));
+        wrap.append(g);
+      }
+      pic.append(wrap);
+      if (r) {
+        const lo = h("div", "leftover");
+        lo.append(h("span", null, "Left over"));
+        const g = h("div", "group");
+        g.style.setProperty("--cols", Math.min(5, r)); g.style.setProperty("--s", s + "px");
+        for (let j = 0; j < r; j++) g.append(cube(NL.colorOf(r), i++, animate));
+        lo.append(g);
+        pic.append(lo);
+      }
+    } else if (spec.kind === "blocks") {
+      pic.append(h("div", "cap", `${M.commas(String(spec.n))} in place-value blocks`));
+      pic.append(NL.blocks(spec.n, { animate, cube: W < 300 ? 28 : 34 }));
+    } else if (spec.kind === "line") {
+      const n = spec.n, lo = Math.min(n, -10), hi = 10;
+      pic.append(h("div", "cap", `${M.fmtBig(BigInt(n))} is ${-n} ${n === -1 ? "step" : "steps"} below zero.`));
+      pic.append(numberLine(n, lo, hi));
+    }
+    return pic;
+  }
+  function numberLine(n, lo, hi) {
+    const NS = "http://www.w3.org/2000/svg";
+    const el = (tag, attrs) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; };
+    const w = 560, pad = 18, y = 34, step = (w - pad * 2) / (hi - lo);
+    const X = (v) => pad + (v - lo) * step;
+    const svg = el("svg", { viewBox: `0 0 ${w} 78`, class: "line-svg", role: "img", "aria-label": `Number line from ${lo} to ${hi} with ${n} marked` });
+    svg.append(el("line", { x1: pad, y1: y, x2: w - pad, y2: y, stroke: "var(--muted)", "stroke-width": 3, "stroke-linecap": "round" }));
+    const arc = el("path", { d: `M ${X(0)} ${y - 6} Q ${(X(0) + X(n)) / 2} ${y - 34} ${X(n)} ${y - 6}`, fill: "none", stroke: NL.colorOf(n), "stroke-width": 3, "stroke-dasharray": "5 5" });
+    svg.append(arc);
+    for (let v = lo; v <= hi; v++) {
+      const major = v === n || v === 0 || (v % 5 === 0 && Math.abs(v - n) > 1);
+      svg.append(el("line", { x1: X(v), y1: y - (major ? 9 : 5), x2: X(v), y2: y + (major ? 9 : 5), stroke: "var(--muted)", "stroke-width": 2 }));
+      if (major) {
+        const t = el("text", { x: X(v), y: y + 30, "text-anchor": "middle", "font-family": "Fredoka, sans-serif", "font-weight": 700, "font-size": v === n || v === 0 ? 19 : 15,
+          fill: v === n ? NL.colorOf(n) : "var(--fg)" });
+        t.textContent = (v < 0 ? "−" : "") + Math.abs(v);
+        svg.append(t);
+      }
+    }
+    svg.append(el("circle", { cx: X(0), cy: y, r: 6, fill: "var(--fg)" }));
+    svg.append(el("circle", { cx: X(n), cy: y, r: 10, fill: NL.colorOf(n), stroke: "var(--surface)", "stroke-width": 3 }));
+    return svg;
+  }
+
+  /* ---------- history tape ---------- */
+  function renderTape() {
+    tapeEl.textContent = "";
+    if (!history.length) { const li = h("li"); li.append(h("p", "nl-muted tape-empty", "Nothing here yet.")); tapeEl.append(li); return; }
+    history.forEach((entry, idx) => {
+      let r;
+      try { r = M.evaluate(entry.items); } catch { return; }
+      if (!r.ok) return;
+      const li = h("li"), b = h("button", "tape-row");
+      b.type = "button";
+      const te = h("span", "te nl-digits"); renderItems(te, entry.items, true); te.append(h("b", "xop", "="));
+      const tr = h("span", "tr nl-digits");
+      if (r.irrational) { tr.append(h("small", null, "about ")); digits(tr, r.approx); }
+      else renderValue(tr, r.value, { maxFrac: 14, maxWhole: 15 });
+      b.append(te, tr);
+      b.setAttribute("aria-label", `${plainItems(entry.items)} equals ${r.irrational ? "about " + r.approx : M.plain(r.value)}. Tap to load it.`);
+      b.addEventListener("click", () => { if (rolling) rolling(); NL.sfx.pop(); st = { items: entry.items.map((x) => ({ ...x })), answered: true, ans: null }; hint = ""; finish({ record: false, speak: true, sound: false }); });
+      li.append(b); tapeEl.append(li);
+      void idx;
+    });
+  }
+  function record(items) {
+    const key = JSON.stringify(items);
+    if (history.length && JSON.stringify(history[0].items) === key) return;
+    history.unshift({ items: items.map((x) => ({ ...x })) });
+    history = history.slice(0, 20);
+    NL.store.set("calc-history", history);
+    renderTape();
+  }
+
+  /* ---------- voice ---------- */
+  async function speak(r) {
+    const tok = ++speakTok;
+    if (!r || !r.ok) return;
+    if (r.irrational) { NL.sayText(`between ${NL.words(r.lo)} and ${NL.words(r.hi)}, ${M.answerWords(r)}`); return; }
+    if (!r.whole) {
+      const w = M.answerWords(r);
+      NL.sayText(r.rem && !w.includes("remainder") ? `${NL.words(r.rem.q)} remainder ${NL.words(r.rem.r)}, or ${w}` : w);
+      return;
+    }
+    const n = r.value.n, a = abs(n), len = digitLen(n);
+    if (a >= 1000000000n) { await NL.say("whoa", "Whoa! That's a giant number!"); if (tok !== speakTok) return; }
+    if (len > 20) { NL.sayText(`${n < 0n ? "a negative number" : "a number"} with ${M.commas(String(len))} digits`); return; }
+    const p = NL.sayNumber(n);
+    if (p && n >= 2n && n <= 100n && M.primeInfo(n).prime) { await p; if (tok === speakTok) NL.say("prime"); }
+  }
+
+  /* ---------- actions ---------- */
+  function finish({ record: rec = true, speak: talk = true, sound = true } = {}) {
+    res = M.evaluate(st.items);
+    st.ans = res.ok && !res.irrational ? res.value : null;
+    const below = res.ok && !res.irrational && res.value.n < 0n;
+    if (below && !NL.store.get("calc-neg-seen", false)) { res.negNote = true; NL.store.set("calc-neg-seen", true); }
+    if (sound) (res.ok ? NL.sfx.clunk : NL.sfx.soft)();
+    if (res.ok && rec) record(st.items);
+    renderScreen(true);
+    renderAbout(talk);
+    liveEl.textContent = res.ok ? (res.irrational ? `about ${res.approx}` : M.answerWords(res)) : M.message(res).text;
+    if (talk && res.ok) setTimeout(() => speak(res), sound ? 160 : 0);
+  }
+
+  function apply(key) {
+    if (rolling) rolling(true);   // a key pressed mid-spin lands the number first, then counts
+    if (key === "rand") return roll();
+    const next = M.press(st, key);
+    hint = next.hint || "";
+    if (next.action === "soft") { NL.sfx.soft(); renderScreen(); return; }
+    st = { items: next.items, answered: next.answered, ans: next.ans };
+    if (next.action === "eval") return finish();
+    if (next.action === "respeak") { NL.sfx.pop(); speak(res); return; }
+    if (next.action === "clear") NL.sfx.whoosh();
+    else if (/^[0-9]$/.test(key)) NL.tone(NL.midi(72 + Number(key)), 0.07, 0.07, "triangle");
+    else if (OPS.includes(key)) NL.sfx.pop();
+    else NL.sfx.tick();
+    renderScreen();
+  }
+
+  /** Random key: numbers flicker past, then one lands. */
+  function roll() {
+    const base = st;
+    const final = NL.randInt(100);
+    const test = M.press(base, "rand:" + final);
+    if (test.action === "soft") { NL.sfx.soft(); hint = ""; renderScreen(); return; }
+    hint = "";
+    const frames = NL.calm() ? 3 : 11;
+    let i = 0, timer = 0;
+    const show = (n) => { const next = M.press(base, "rand:" + n); st = { items: next.items, answered: false, ans: next.ans }; renderScreen(); };
+    rolling = (quiet) => { clearTimeout(timer); rolling = null; show(final); if (!quiet) NL.sfx.pop(); };
+    const frame = () => {
+      if (i < frames) { show(NL.randInt(100)); NL.sfx.tick(); i++; timer = setTimeout(frame, (NL.calm() ? 90 : 45) + i * 7); }
+      else { rolling(); NL.sayNumber(final); }
+    };
+    NL.sfx.whoosh();
+    frame();
+  }
+
+  /* ---------- keypad ---------- */
+  const DIE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/><g fill="currentColor"><circle cx="8.2" cy="8.2" r="1.7"/><circle cx="15.8" cy="8.2" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="8.2" cy="15.8" r="1.7"/><circle cx="15.8" cy="15.8" r="1.7"/></g></svg>';
+  const BACK = '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h11v14H9l-6-7z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>';
+  const KEYS = [
+    ["krand", "rand", DIE, "fn", "random", "Random number"],
+    ["ksq", "sq", "x<sup>2</sup>", "fn", "square", "Square"],
+    ["ksqrt", "sqrt", "√", "fn", "root", "Square root"],
+    ["kpow", "^", "x<sup>y</sup>", "fn", "power", "To the power of"],
+    ["kclear", "C", "C", "fn", "clear", "Clear"],
+    ["kback", "back", BACK, "fn", "back", "Backspace"],
+    ["kdiv", "÷", "÷", "op", "", "Divide"],
+    ["kmul", "×", "×", "op", "", "Times"],
+    ["k7", "7"], ["k8", "8"], ["k9", "9"], ["ksub", "−", "−", "op", "", "Minus"],
+    ["k4", "4"], ["k5", "5"], ["k6", "6"], ["kadd", "+", "+", "op", "", "Plus"],
+    ["k1", "1"], ["k2", "2"], ["k3", "3"], ["keq", "=", "=", "eq", "", "Equals"],
+    ["k0", "0", "0", "dig zero"], ["kdot", ".", ".", "dot", "", "Point"],
+  ];
+  const keyBtn = {};
+  for (const [id, key, label = key, cls = "dig", cap = "", aria = ""] of KEYS) {
+    const b = h("button", "k " + cls);
+    b.type = "button"; b.id = id; b.dataset.k = key;
+    b.innerHTML = `<span class="kl">${label}</span>` + (cap ? `<small>${cap}</small>` : "");
+    if (cls.startsWith("dig")) b.style.setProperty("--c", NL.digitVar(key));
+    if (aria) b.setAttribute("aria-label", aria);
+    b.addEventListener("click", () => apply(key));
+    keysEl.append(b);
+    keyBtn[key] = b;
+  }
+
+  const KEYBOARD = { "+": "+", "-": "−", "*": "×", x: "×", X: "×", "/": "÷", "^": "^", ".": ".", ",": ".", Enter: "=", "=": "=",
+    Backspace: "back", Escape: "C", Delete: "C", r: "rand", R: "rand" };
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = /^[0-9]$/.test(e.key) ? e.key : KEYBOARD[e.key];
+    if (!key) return;
+    e.preventDefault();
+    const b = keyBtn[key];
+    if (b) { b.classList.add("down"); setTimeout(() => b.classList.remove("down"), 110); }
+    apply(key);
+  });
+
+  let preloaded = false;
+  document.addEventListener("pointerdown", () => {
+    if (preloaded) return; preloaded = true;
+    NL.preload(["whoa", "prime", ...Array.from({ length: 13 }, (_, i) => "n" + i)]);
+  }, { passive: true });
+
+  let rz = 0;
+  addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { fitMain(); if (st.answered || res) renderAbout(false); }, 120); });
+
+  /* ---------- open with something on the screen ---------- */
+  renderTape();
+  st = history.length ? { items: history[0].items.map((x) => ({ ...x })), answered: true, ans: null }
+    : { items: [{ k: "num", s: "6" }, { k: "op", s: "×" }, { k: "num", s: "7" }], answered: true, ans: null };
+  finish({ record: false, speak: false, sound: false });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitMain);
+})();
+</script>
+</body>
+</html>

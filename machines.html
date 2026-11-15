@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Number Machines · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  /* Layout. Phone: modes, levels, machine (with its In/Out tape), keypad.
+     Desktop: machine on the left, keypad on the right. */
+  .game { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "modes" "levels" "machine" "pad"; }
+  .modes { grid-area: modes; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .modes .nl-btn { min-height: 48px; padding: 8px 10px; font-size: 17px; }
+  .levels-wrap { grid-area: levels; min-width: 0; }
+  .machine-card { grid-area: machine; display: grid; gap: 10px; padding: 12px; }
+  .pad { grid-area: pad; display: grid; gap: 10px; align-content: start; padding: 14px; }
+  @media (min-width: 900px) {
+    .game { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); grid-template-areas: "modes modes" "levels levels" "machine pad"; column-gap: 22px; align-items: start; }
+    .modes { max-width: 520px; }
+    .machine-card { padding: 18px; gap: 14px; }
+    .pad { padding: 18px; }
+  }
+
+  /* level ladder */
+  .lv-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 0 2px 4px; }
+  .levels { display: flex; gap: 7px; overflow-x: auto; padding: 6px 4px 8px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  @media (min-width: 900px) { .levels { flex-wrap: wrap; overflow: visible; } }
+  .lv {
+    flex: none; position: relative; width: 50px; height: 56px; border-radius: 15px; scroll-snap-align: center;
+    background: var(--window); border: 3px solid var(--machine); color: var(--window-fg);
+    display: grid; place-items: center; align-content: center; gap: 1px; padding: 0;
+    box-shadow: 0 3px 0 var(--machine-edge);
+  }
+  .lv.tier { margin-left: 9px; }
+  .lv .ln { font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1; }
+  .lv .ls { font-family: var(--font-display); font-weight: 600; font-size: 10px; line-height: 1; color: #c9d1f5; white-space: nowrap; max-width: 44px; overflow: hidden; }
+  .lv .lock { width: 12px; height: 12px; fill: none; stroke: #8e98bf; stroke-width: 2.6; stroke-linecap: round; }
+  .lv.locked { opacity: 0.5; }
+  .lv.done { border-color: var(--c); transform: rotate(-4deg); }
+  .lv.done:nth-child(2n) { transform: rotate(3deg); }
+  .lv .star { position: absolute; top: -9px; right: -9px; width: 22px; height: 22px; filter: drop-shadow(0 1px 0 rgba(0,0,0,.25)); }
+  .lv.cur { outline: 3px solid var(--button); outline-offset: 2px; }
+  .lv.pop { animation: stick 0.7s ease-out; }
+  @keyframes stick { 0% { transform: scale(0.4) rotate(-30deg); } 60% { transform: scale(1.25) rotate(6deg); } 100% { transform: scale(1) rotate(-4deg); } }
+
+  /* the machine drawing */
+  .rig { position: relative; height: 252px; width: 100%; max-width: 460px; margin: 0 auto; }
+  .hopper { position: absolute; z-index: 1; top: 4px; left: calc(36% - 72px); width: 144px; height: 66px; }
+  .mbody {
+    position: absolute; z-index: 3; left: 0; top: 58px; width: 72%; height: 186px; border-radius: 24px; padding: 10px 12px 8px;
+    display: grid; grid-template-rows: 22px 1fr 46px; gap: 7px;
+  }
+  .mtop { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .plate { font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.1em; color: #c9d1f5; background: rgba(255,255,255,.08); border-radius: 8px; padding: 3px 8px; white-space: nowrap; }
+  .lights { display: flex; gap: 6px; }
+  .lights i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: 0.32; }
+  .whir .lights i { animation: chase 0.9s ease-in-out infinite; }
+  .lights i:nth-child(2) { animation-delay: 0.15s !important; } .lights i:nth-child(3) { animation-delay: 0.3s !important; }
+  .lights i:nth-child(4) { animation-delay: 0.45s !important; } .lights i:nth-child(5) { animation-delay: 0.6s !important; }
+  @keyframes chase { 0%, 100% { opacity: 0.32; box-shadow: none; } 50% { opacity: 1; box-shadow: 0 0 8px var(--c); } }
+  .calm .whir .lights i { animation: none; opacity: 1; }
+  .won .lights i { opacity: 1; box-shadow: 0 0 8px var(--c); }
+
+  .panels { display: grid; place-items: center; min-height: 0; }
+  .flip { width: min(100%, 168px); height: 100%; max-height: 92px; perspective: 600px; }
+  .flip-in { position: relative; width: 100%; height: 100%; transition: transform 0.7s cubic-bezier(.3,.7,.3,1.2); transform-style: preserve-3d; }
+  .flip.open .flip-in { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; display: grid; place-items: center; backface-visibility: hidden; -webkit-backface-visibility: hidden; padding: 4px 8px; }
+  .face.back { transform: rotateY(180deg); }
+  .calm .flip-in { transition: none; transform: none !important; }
+  .calm .face { transition: opacity 0.25s; backface-visibility: visible; -webkit-backface-visibility: visible; }
+  .calm .face.back { transform: none; opacity: 0; }
+  .calm .flip.open .face.back { opacity: 1; }
+  .calm .flip.open .face.front { opacity: 0; }
+  .q { font-family: var(--font-display); font-weight: 700; font-size: 62px; line-height: 1; color: #ffd95c; text-shadow: 0 0 16px rgba(255, 217, 92, .45); }
+  .sym { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; white-space: nowrap; }
+  .sym.long { font-size: 26px; }
+  .stages { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; height: 100%; }
+  .stage { flex: 1 1 0; min-width: 0; max-width: 150px; height: 100%; max-height: 92px; display: grid; place-items: center; align-content: center; gap: 2px; padding: 4px 6px; transition: border-color 0.2s; }
+  .stage.sel { border-color: var(--focus); }
+  .stage .sop { font-family: var(--font-display); font-weight: 700; font-size: 28px; line-height: 1; white-space: nowrap; }
+  .stage .sres { font-family: var(--font-display); font-weight: 600; font-size: 16px; line-height: 1.1; color: #c9d1f5; white-space: nowrap; min-height: 1.1em; }
+  .stage .sres small { font-size: 12px; }
+  .pipe { flex: none; width: 16px; height: 22px; display: grid; place-items: center; }
+  .pipe svg { width: 16px; height: 22px; }
+
+  .mbot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .port { flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--window); border: 3px solid var(--machine-edge); }
+  .port.big { width: 46px; height: 46px; } .port.small { width: 36px; height: 36px; }
+  .port svg { width: 88%; height: 88%; }
+  .whir .port.big svg { animation: spin 1.2s linear infinite; }
+  .whir .port.small svg { animation: spin 0.8s linear infinite reverse; }
+  .calm .whir .port.big svg { animation-duration: 3s; } .calm .whir .port.small svg { animation-duration: 2s; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .grille { flex: 1; display: grid; gap: 5px; padding: 0 4px; }
+  .grille i { height: 5px; border-radius: 3px; background: rgba(0,0,0,.28); box-shadow: 0 1px 0 rgba(255,255,255,.08); }
+
+  .chute { position: absolute; z-index: 2; left: calc(72% - 26px); top: 168px; width: 76px; height: 46px; }
+  .tray { position: absolute; z-index: 1; right: 0; top: 238px; width: 78px; height: 12px; border-radius: 6px; background: linear-gradient(#b9c5e8, #7d8bbb); }
+  .rig-lab { position: absolute; font-family: var(--font-display); font-weight: 700; font-size: 12px; letter-spacing: 0.12em; color: var(--muted); }
+  .in-lab { top: 18px; left: calc(36% + 80px); }
+  .out-lab { top: 150px; right: 22px; }
+
+  /* number balls: dark glass ball, colored digits, ring in the color of the last digit */
+  .ball {
+    --bs: 58px; width: var(--bs); height: var(--bs); border-radius: 50%;
+    display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; line-height: 1;
+    background: radial-gradient(circle at 34% 28%, #46579f 0, #1b2452 48%, #0b1030 100%);
+    border: 4px solid var(--ring, var(--d0)); color: var(--window-fg);
+    box-shadow: 0 4px 10px rgba(5, 10, 40, .35), inset 0 -4px 0 rgba(0,0,0,.25);
+  }
+  .ball .bn { font-size: calc(var(--bs) * .46); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ball[data-len="3"] .bn { font-size: calc(var(--bs) * .36); }
+  .ball[data-len="4"] .bn { font-size: calc(var(--bs) * .29); }
+  .ball[data-len="5"] .bn { font-size: calc(var(--bs) * .24); }
+  .ball[data-len="6"] .bn { font-size: calc(var(--bs) * .2); }
+  .in-ball { position: absolute; z-index: 2; top: 0; left: calc(36% - 29px); }
+  .out-ball { --bs: 66px; position: absolute; z-index: 4; right: 6px; top: 172px; }
+  .out-ball.empty { background: transparent; border: 3px dashed var(--line); box-shadow: none; }
+  .out-ball.ghost { border-style: dashed; opacity: 0.85; }
+  .out-tag { position: absolute; z-index: 5; right: 0; top: 160px; font-family: var(--font-display); font-weight: 700; font-size: 14px; background: var(--surface); color: var(--fg); border: 2px solid var(--line); border-radius: 10px; padding: 2px 7px; white-space: nowrap; }
+
+  /* In -> Out tape */
+  .tape-wrap { display: grid; gap: 6px; }
+  .tape-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .tape { overflow-x: auto; border-radius: 16px; background: var(--window); border: 3px solid var(--machine-edge); color: var(--window-fg); scrollbar-width: thin; }
+  .tape table { border-collapse: separate; border-spacing: 0; }
+  .tape th, .tape td { height: 34px; padding: 0 8px; text-align: center; white-space: nowrap; font-family: var(--font-display); }
+  .tape th { position: sticky; left: 0; z-index: 1; background: var(--window); text-align: left; font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #a9b3e0; padding-left: 12px; border-right: 2px solid var(--machine-edge); }
+  .tape td { min-width: 46px; font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .tape td small { font-size: 12px; color: #c9d1f5; font-weight: 600; }
+  .tape tr + tr td, .tape tr + tr th { border-top: 2px dashed #2b3670; }
+  .tape td.hi { background: rgba(255, 217, 92, .14); }
+  .tape-empty { padding: 12px 14px; color: #a9b3e0; font-weight: 700; font-size: 15px; }
+
+  /* message + main buttons under the machine */
+  .msg { margin: 0; min-height: 2.8em; font-size: 17px; font-weight: 700; line-height: 1.35; }
+  .msg strong { font-family: var(--font-display); font-weight: 700; font-size: 20px; }
+  .msg .sub { display: block; font-weight: 700; color: var(--muted); font-size: 15px; margin-top: 2px; }
+  .know {
+    width: 100%; min-height: 60px; border-radius: 999px; padding: 10px 18px; display: flex; align-items: center; justify-content: center; gap: 10px;
+    font-family: var(--font-display); font-weight: 700; font-size: 22px; line-height: 1.1;
+    border: 3px dashed var(--line); background: var(--surface-2); color: var(--muted);
+  }
+  .know svg { width: 26px; height: 26px; flex: none; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .know .dots { display: inline-flex; gap: 5px; }
+  .know .dots i { width: 11px; height: 11px; border-radius: 50%; border: 2px solid currentColor; }
+  .know .dots i.on { background: currentColor; }
+  .know.lit, .next { border: none; background: #2f9e6e; color: #fff; box-shadow: 0 6px 0 #1d6e4b; }
+  .know.lit { animation: glow 2.6s ease-in-out infinite; }
+  .calm .know.lit { animation: none; }
+  @keyframes glow { 0%, 100% { box-shadow: 0 6px 0 #1d6e4b, 0 0 0 0 rgba(47,158,110,0); } 50% { box-shadow: 0 6px 0 #1d6e4b, 0 0 0 8px rgba(47,158,110,.22); } }
+  .know.lit:active, .next:active { transform: translateY(4px); box-shadow: 0 2px 0 #1d6e4b; }
+  .next { width: 100%; min-height: 64px; border-radius: 999px; font-family: var(--font-display); font-weight: 700; font-size: 22px; padding: 10px 18px; }
+
+  /* keypad card */
+  .pad-head { font-family: var(--font-display); font-weight: 700; font-size: 21px; line-height: 1.2; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 7px; }
+  .pad-head .ball { --bs: 40px; display: inline-grid; border-width: 3px; }
+  .pad-hint:empty { display: none; }
+  .pad-hint { margin: 0; color: var(--muted); font-weight: 700; font-size: 15px; }
+  .quick { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; justify-items: center; }
+  .quick .ball { --bs: 50px; border-width: 3px; padding: 0; }
+  @media (max-width: 380px) { .quick .ball { --bs: 44px; } }
+  .quick .ball:active { transform: scale(.92); }
+  .quick .dice svg { width: 26px; height: 26px; }
+  .disp-row { display: flex; gap: 8px; }
+  .disp { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 58px; padding: 6px 14px; }
+  .disp .lab { font-size: 12px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #a9b3e0; }
+  .disp .val { font-family: var(--font-display); font-weight: 700; font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .disp .val.ph { color: #4b5791; }
+  .disp.nudge { animation: nudge 0.35s; }
+  @keyframes nudge { 30% { transform: translateX(-5px); } 70% { transform: translateX(5px); } }
+  .key {
+    border: none; border-radius: 15px; background: var(--window); color: var(--window-fg);
+    box-shadow: inset 0 -5px 0 var(--machine-edge), 0 2px 0 var(--machine-edge);
+    font-family: var(--font-display); font-weight: 700; font-size: 30px; line-height: 1; min-height: 54px; padding: 0;
+    transition: transform 0.05s;
+  }
+  .key:active { transform: translateY(2px); box-shadow: inset 0 -2px 0 var(--machine-edge); }
+  .keys { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  .bksp { flex: none; width: 66px; display: grid; place-items: center; }
+  .bksp svg { width: 30px; height: 30px; fill: none; stroke: #e9edff; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  #go { width: 100%; min-height: 66px; font-size: 26px; padding: 12px 20px; }
+  .side-btn { width: 100%; min-height: 50px; }
+
+  .choices { display: grid; gap: 10px; }
+  .choice { display: grid; gap: 3px; text-align: left; padding: 14px 16px; min-height: 76px; }
+  .choice b { font-size: 21px; }
+  .choice span { font-family: var(--font-body); font-weight: 700; font-size: 15px; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .rcard { border: 3px solid var(--machine-edge); min-height: 104px; display: grid; place-items: center; align-content: center; gap: 6px; padding: 10px 6px; border-radius: 18px; background: var(--window); color: var(--window-fg); box-shadow: 0 4px 0 var(--machine-edge); }
+  .rcard:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--machine-edge); }
+  .rcard .sym { font-size: 28px; }
+  .rcard .rw { font-weight: 700; font-size: 14px; color: #c9d1f5; text-align: center; line-height: 1.2; }
+
+  /* build-your-own panel */
+  .builder { display: grid; gap: 10px; }
+  .brow { display: grid; gap: 6px; padding: 10px; border-radius: 16px; background: var(--surface-2); border: 2px solid var(--line); }
+  .brow-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .brow-top b { font-family: var(--font-display); font-size: 18px; }
+  .brow-ctl { display: flex; gap: 8px; align-items: center; }
+  .ops { display: flex; gap: 6px; flex: 1; min-width: 0; }
+  .ops .nl-btn { flex: 1 1 0; min-width: 0; min-height: 50px; padding: 4px; font-size: 26px; font-weight: 700; }
+  .numbox { flex: none; width: 74px; min-height: 52px; border-radius: 14px; border: 3px solid var(--machine-edge); padding: 0 4px; background: var(--window); color: var(--window-fg); font-family: var(--font-display); font-weight: 700; font-size: 28px; }
+  .numbox.sel { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 35%, transparent); }
+  .numbox .ph { color: #4b5791; }
+  .rm { min-height: 44px; padding: 6px 12px; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Number Machines<small>Find the secret rule</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <div class="game">
+    <div class="modes" role="group" aria-label="How to play">
+      <button class="nl-btn" id="modeMystery" aria-pressed="true">Mystery Machine</button>
+      <button class="nl-btn" id="modeBuild" aria-pressed="false">Build Your Own</button>
+    </div>
+
+    <section class="levels-wrap" id="levelsWrap" aria-label="Levels">
+      <div class="lv-head"><span class="nl-label">Levels</span><span class="nl-label" id="stickerCount"></span></div>
+      <div class="levels" id="levels"></div>
+    </section>
+
+    <section class="machine-card nl-card" aria-label="The machine">
+      <div class="rig" id="rig">
+        <svg class="hopper" viewBox="0 0 144 66" aria-hidden="true">
+          <defs><linearGradient id="steel" x1="0" x2="1"><stop offset="0" stop-color="#8f9dcc"/><stop offset=".45" stop-color="#d7def3"/><stop offset="1" stop-color="#7f8dbf"/></linearGradient></defs>
+          <path d="M8 10 H136 L94 50 V66 H50 V50 Z" fill="url(#steel)" stroke="#5b679a" stroke-width="2.5" stroke-linejoin="round"/>
+          <rect x="2" y="3" width="140" height="11" rx="5.5" fill="#c9d3ef" stroke="#5b679a" stroke-width="2.5"/>
+          <path d="M50 56 H94" stroke="#5b679a" stroke-width="2.5"/>
+        </svg>
+        <div class="ball in-ball" id="inBall" hidden aria-hidden="true"><span class="bn"></span></div>
+        <div class="mbody nl-machine">
+          <div class="mtop"><span class="plate" id="plate">LEVEL 1</span><span class="lights" aria-hidden="true"><i style="--c:var(--d1)"></i><i style="--c:var(--d3)"></i><i style="--c:var(--d4)"></i><i style="--c:var(--d5)"></i><i style="--c:var(--d7)"></i></span></div>
+          <div class="panels" id="panels"></div>
+          <div class="mbot" aria-hidden="true"><span class="port big" id="gearA"></span><span class="grille"><i></i><i></i><i></i></span><span class="port small" id="gearB"></span></div>
+        </div>
+        <svg class="chute" viewBox="0 0 76 46" aria-hidden="true">
+          <path d="M0 12 H40 Q58 12 62 30" fill="none" stroke="#5b679a" stroke-width="26" stroke-linecap="butt"/>
+          <path d="M0 12 H40 Q58 12 62 30" fill="none" stroke="url(#steel)" stroke-width="21" stroke-linecap="butt"/>
+          <ellipse cx="62" cy="33" rx="13" ry="7" fill="#0b1030" stroke="#5b679a" stroke-width="2.5" transform="rotate(-20 62 33)"/>
+        </svg>
+        <div class="tray" aria-hidden="true"></div>
+        <span class="rig-lab in-lab" aria-hidden="true">IN</span>
+        <span class="rig-lab out-lab" aria-hidden="true">OUT</span>
+        <div class="ball out-ball empty" id="outBall" aria-hidden="true"><span class="bn"></span></div>
+        <span class="out-tag" id="outTag" hidden></span>
+      </div>
+
+      <div class="tape-wrap">
+        <div class="tape-head"><span class="nl-label">In → Out table</span><span class="nl-label" id="tapeCount"></span></div>
+        <div class="tape" id="tape"></div>
+      </div>
+
+      <p class="msg" id="msg" aria-live="polite"></p>
+      <button class="know" id="know" type="button"></button>
+      <button class="next" id="next" type="button" hidden></button>
+    </section>
+
+    <section class="pad nl-card" id="pad" aria-label="Keypad">
+      <div class="pad-head" id="padHead" hidden></div>
+      <div class="choices" id="choose" hidden>
+        <button class="nl-btn choice" id="choosePredict"><b>Predict</b><span>The machine picks a number. You say what comes out.</span></button>
+        <button class="nl-btn choice" id="choosePick"><b>Pick the rule</b><span>Choose the right rule card out of 4.</span></button>
+      </div>
+      <div class="cards" id="pick" hidden></div>
+      <div class="builder" id="builder" hidden></div>
+      <div class="quick" id="quick"></div>
+      <div id="keypad">
+        <div class="disp-row">
+          <div class="disp nl-window" id="disp"><span class="lab" id="dispLab">Number to put in</span><span class="val nl-num" id="dispVal"></span></div>
+          <button class="key bksp" id="bksp" aria-label="Backspace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h11v14H9l-6-7z"/><path d="M12 9l5 6M17 9l-5 6"/></svg></button>
+        </div>
+        <div class="keys" id="keys" style="margin-top:8px"></div>
+      </div>
+      <p class="pad-hint" id="padHint" aria-live="polite"></p>
+      <button class="nl-big" id="go">Put it in</button>
+      <button class="nl-btn side-btn" id="edit" hidden>Change my machine</button>
+      <button class="nl-btn side-btn" id="back" hidden>Keep feeding numbers</button>
+    </section>
+  </div>
+</div>
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const MINUS = "−";
+  const fmtN = (n) => (n < 0 ? MINUS : "") + NL.fmt(Math.abs(n));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = NL.randInt(i + 1) - 1; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const plural = (k, word) => `${k} ${word}${k === 1 ? "" : "s"}`;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  document.documentElement.classList.toggle("calm", NL.calm());
+
+  // ---------- rules ----------
+  const rule = (sym, words, f, show, more = {}) => ({ sym, words, f, show, accepts: () => true, ...more });
+  const EVEN_ONLY = {
+    accepts: (n) => n % 2 === 0,
+    refuse: (n) => `This machine only takes even numbers. ${n} is odd, so it can't be split into two equal halves.`,
+    refuseVoice: "odd", rnd: () => 2 * NL.randBetween(0, 50), start: () => 2 * NL.randBetween(1, 5),
+  };
+  const UP_TO_20 = {
+    accepts: (n) => n <= 20,
+    refuse: (n) => `This machine only takes numbers up to 20. ${n} is too big for it.`,
+    rnd: () => NL.randBetween(0, 20),
+  };
+  const LEVELS = [
+    rule("+ 1", "Add 1", (n) => n + 1, (n) => `${n} + 1`),
+    rule("+ 2", "Add 2", (n) => n + 2, (n) => `${n} + 2`),
+    rule("+ 10", "Add 10", (n) => n + 10, (n) => `${n} + 10`, { note: "The tens digit goes up by one." }),
+    rule("− 1", "Take away 1", (n) => n - 1, (n) => `${n} − 1`),
+    rule("× 2", "Double it", (n) => n * 2, (n) => `${n} × 2`, { note: "Doubling means adding a number to itself." }),
+    rule("+ 5", "Add 5", (n) => n + 5, (n) => `${n} + 5`),
+    rule("× 10", "Times 10", (n) => n * 10, (n) => `${n} × 10`, { note: "Times 10 puts a zero on the end." }),
+    rule("− 2", "Take away 2", (n) => n - 2, (n) => `${n} − 2`),
+    rule("+ 100", "Add 100", (n) => n + 100, (n) => `${n} + 100`, { note: "The hundreds digit goes up by one." }),
+    rule("× 3", "Times 3", (n) => n * 3, (n) => `${n} × 3`),
+    rule("÷ 2", "Half of it", (n) => n / 2, (n) => `${n} ÷ 2`, { ...EVEN_ONLY, note: "Half means two equal parts." }),
+    rule("× 5", "Times 5", (n) => n * 5, (n) => `${n} × 5`, { note: "Times 5 answers always end in 0 or 5." }),
+    rule("n × n", "Times itself", (n) => n * n, (n) => `${n} × ${n}`, { note: "A number times itself is a square number." }),
+    rule("× 2 + 1", "Double it, then add 1", (n) => n * 2 + 1, (n) => `${n} × 2 + 1`, { note: "Two steps in a row. The answer is always odd." }),
+    rule("× 10 + 1", "Times 10, then add 1", (n) => n * 10 + 1, (n) => `${n} × 10 + 1`, { note: "The answer always ends in 1." }),
+    rule("20 − n", "Take it away from 20", (n) => 20 - n, (n) => `20 − ${n}`, { ...UP_TO_20, note: "Bigger numbers in make smaller numbers out." }),
+    rule("n + n + n", "Add it to itself 3 times", (n) => 3 * n, (n) => `${n} + ${n} + ${n}`, { note: "That is the same as × 3!" }),
+  ];
+  const TIERS = new Set([4, 8, 12, 16]);
+  const EXTRA = [
+    rule("+ 3", "Add 3", (n) => n + 3), rule("+ 4", "Add 4", (n) => n + 4), rule("+ 20", "Add 20", (n) => n + 20),
+    rule("− 3", "Take away 3", (n) => n - 3), rule("− 5", "Take away 5", (n) => n - 5), rule("× 4", "Times 4", (n) => n * 4),
+    rule("× 2 − 1", "Double it, then take away 1", (n) => n * 2 - 1), rule("+ 11", "Add 11", (n) => n + 11),
+  ];
+  const POOL = [...LEVELS, ...EXTRA];
+  const equiv = (a, b) => { for (let n = 0; n <= 40; n++) if (a.accepts(n) && b.accepts(n) && a.f(n) !== b.f(n)) return false; return true; };
+  const family = (r) => r.sym.replace(/[0-9 ]/g, "").charAt(0);
+
+  // ---------- state ----------
+  const cracked = new Set(NL.store.get("machines-cracked", []).filter((i) => Number.isInteger(i) && i >= 0 && i < LEVELS.length));
+  const unlocked = (i) => i === 0 || cracked.has(i) || cracked.has(i - 1);
+  const firstOpen = () => { for (let i = 0; i < LEVELS.length; i++) if (!cracked.has(i)) return i; return LEVELS.length - 1; };
+  let savedLv = NL.store.get("machines-level", null);
+  const startLv = Number.isInteger(savedLv) && savedLv >= 0 && savedLv < LEVELS.length && unlocked(savedLv) ? savedLv : firstOpen();
+
+  const OPS = ["+", MINUS, "×", "÷"];
+  const savedBuild = NL.store.get("machines-build", null);
+  const validStages = savedBuild && Array.isArray(savedBuild.stages) && savedBuild.stages.length >= 1 && savedBuild.stages.length <= 2 &&
+    savedBuild.stages.every((s) => OPS.includes(s.op) && /^\d{1,2}$/.test(String(s.k)) && Number(s.k) <= 20 && !(s.op === "÷" && Number(s.k) === 0));
+
+  const S = {
+    mode: NL.store.get("machines-mode", "mystery") === "build" ? "build" : "mystery",
+    lv: startLv, rows: [], phase: "explore", predictN: null, lastAsked: null, wrong: new Set(), cards: [], lastOut: null,
+    entry: "", msg: null,
+    build: {
+      stages: validStages ? savedBuild.stages.map((s) => ({ op: s.op, k: String(Number(s.k)) })) : [{ op: "×", k: "2" }],
+      step: validStages ? "run" : "build", sel: 0, fresh: true, rows: [], lastOut: null, stageRes: null, sig: null, msg: null, entry: "",
+    },
+  };
+  S.build.sig = JSON.stringify(S.build.stages);
+  const savedRows = NL.store.get("machines-rows", null);
+  if (savedRows && savedRows.lv === S.lv && Array.isArray(savedRows.rows)) {
+    S.rows = savedRows.rows.filter((r) => Number.isInteger(r.n) && r.n >= 0 && r.n <= 100 && LEVELS[S.lv].accepts(r.n)).map((r) => ({ n: r.n, out: LEVELS[S.lv].f(r.n) }));
+  }
+  const saveRows = () => NL.store.set("machines-rows", { lv: S.lv, rows: S.rows });
+  let negSeen = NL.store.get("machines-negseen", false);
+  const negLine = (vals) => {
+    if (negSeen || !vals.some((v) => v < 0)) return "";
+    negSeen = true; NL.store.set("machines-negseen", true);
+    return "Below zero! Numbers keep going past zero.";
+  };
+  const startNumber = (R) => (R && R.start ? R.start() : NL.randBetween(1, 9));
+  S.entry = String(startNumber(LEVELS[S.lv]));
+  S.build.entry = S.build.step === "run" ? String(NL.randBetween(1, 9)) : "";
+
+  // ---------- elements ----------
+  const rig = $("#rig"), inBall = $("#inBall"), outBall = $("#outBall"), outTag = $("#outTag");
+  const gear = (teeth) => {
+    const r = 21, seg = (2 * Math.PI * r) / teeth;
+    return `<svg viewBox="-30 -30 60 60" aria-hidden="true"><circle r="${r}" fill="none" stroke="#a9b7e3" stroke-width="8" stroke-dasharray="${(seg / 2).toFixed(2)} ${(seg / 2).toFixed(2)}"/><circle r="${r - 2}" fill="#a9b7e3"/><circle r="${r - 9}" fill="none" stroke="#7d8bbb" stroke-width="3"/><circle r="5" fill="#1f2a57"/></svg>`;
+  };
+  $("#gearA").innerHTML = gear(12);
+  $("#gearB").innerHTML = gear(9);
+
+  const STAR = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 16.9 5.9 20.4l1.5-6.8L2.2 9l6.9-.7z" fill="#ffc93c" stroke="#b47d0a" stroke-width="1.4" stroke-linejoin="round"/></svg>';
+  const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
+  const BULB = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/></svg>';
+  const DICE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke="#e9edff" stroke-width="2"/><circle cx="8.5" cy="8.5" r="1.6" fill="#e9edff"/><circle cx="15.5" cy="15.5" r="1.6" fill="#e9edff"/><circle cx="12" cy="12" r="1.6" fill="#e9edff"/><circle cx="15.5" cy="8.5" r="1.6" fill="#e9edff"/><circle cx="8.5" cy="15.5" r="1.6" fill="#e9edff"/></svg>';
+
+  function paintBall(b, n) {
+    const s = typeof n === "number" ? fmtN(n) : String(n);
+    NL.colorDigits(b.querySelector(".bn"), s);
+    b.style.setProperty("--ring", typeof n === "number" ? NL.colorOf(n) : "var(--d0)");
+    b.dataset.len = String(Math.min(6, Math.max(1, s.length)));
+  }
+
+  // keypad digits 1-9 then 0, each in its own color
+  const keys = $("#keys");
+  [1, 2, 3, 4, 5, 6, 7, 8, 9, 0].forEach((d) => {
+    const k = el("button", "key"); k.dataset.d = String(d); k.setAttribute("aria-label", String(d));
+    NL.colorDigits(k, d); keys.appendChild(k);
+  });
+  const quick = $("#quick");
+  [1, 2, 3, 5, 10].forEach((n) => {
+    const b = el("button", "ball qb"); b.dataset.n = String(n); b.setAttribute("aria-label", `Put ${n} in`);
+    b.appendChild(el("span", "bn")); paintBall(b, n); quick.appendChild(b);
+  });
+  const dice = el("button", "ball qb dice"); dice.dataset.n = "random"; dice.setAttribute("aria-label", "Put a random number in"); dice.innerHTML = DICE;
+  quick.appendChild(dice);
+
+  // ---------- messages ----------
+  function msg(main, sub) {
+    const m = { main, sub };
+    if (S.mode === "mystery") S.msg = m; else S.build.msg = m;
+    paintMsg();
+  }
+  function paintMsg() {
+    const m = S.mode === "mystery" ? S.msg : S.build.msg;
+    const box = $("#msg"); box.textContent = "";
+    if (!m) return;
+    box.appendChild(el("strong", "", m.main));
+    if (m.sub) box.appendChild(el("span", "sub", m.sub));
+  }
+  let hintTimer = 0;
+  function padHint(t, nudge) {
+    $("#padHint").textContent = t || "";
+    clearTimeout(hintTimer);
+    if (t) hintTimer = setTimeout(() => { $("#padHint").textContent = ""; }, 5000);
+    if (nudge && !NL.calm()) { const d = $("#disp"); d.classList.remove("nudge"); void d.offsetWidth; d.classList.add("nudge"); }
+  }
+
+  // ---------- context: what the keypad is typing ----------
+  function ctx() {
+    if (S.mode === "mystery") {
+      if (S.phase === "predict") return "answer";
+      if (S.phase === "explore" || S.phase === "cracked") return "feed";
+      return "none";
+    }
+    return S.build.step === "build" ? "operand" : "feed";
+  }
+  const entryGet = () => (S.mode === "mystery" ? S.entry : S.build.entry);
+  const entrySet = (v) => { if (S.mode === "mystery") S.entry = v; else S.build.entry = v; };
+
+  // ---------- render ----------
+  function renderModes() {
+    $("#modeMystery").setAttribute("aria-pressed", String(S.mode === "mystery"));
+    $("#modeBuild").setAttribute("aria-pressed", String(S.mode === "build"));
+    $("#levelsWrap").hidden = S.mode !== "mystery";
+  }
+
+  function renderLevels() {
+    const box = $("#levels"); box.textContent = "";
+    LEVELS.forEach((R, i) => {
+      const b = el("button", "lv"); b.dataset.lv = String(i);
+      if (TIERS.has(i)) b.classList.add("tier");
+      const done = cracked.has(i), open = unlocked(i);
+      b.style.setProperty("--c", NL.colorOf(i + 1));
+      if (done) b.classList.add("done");
+      if (!open) b.classList.add("locked");
+      if (i === S.lv) { b.classList.add("cur"); b.setAttribute("aria-current", "true"); }
+      const num = el("span", "ln"); NL.colorDigits(num, i + 1); b.appendChild(num);
+      if (done) { const s = el("span", "ls"); NL.colorDigits(s, R.sym); b.appendChild(s); b.insertAdjacentHTML("beforeend", STAR); }
+      else if (!open) b.insertAdjacentHTML("beforeend", LOCK);
+      b.setAttribute("aria-label", `Level ${i + 1}${done ? `, cracked: ${R.words}` : open ? ", open" : ", locked"}`);
+      box.appendChild(b);
+    });
+    $("#stickerCount").textContent = `${plural(cracked.size, "sticker")} of ${LEVELS.length}`;
+  }
+  function scrollLevelIntoView() {
+    const b = document.querySelector(`.lv[data-lv="${S.lv}"]`), box = $("#levels");
+    if (b && box.scrollWidth > box.clientWidth) box.scrollLeft = b.offsetLeft - box.clientWidth / 2 + b.offsetWidth / 2;
+  }
+
+  function renderPanels() {
+    const p = $("#panels");
+    if (S.mode === "mystery") {
+      $("#plate").textContent = `LEVEL ${S.lv + 1}`;
+      let flip = p.querySelector(".flip");
+      if (!flip || flip.dataset.lv !== String(S.lv)) {
+        p.textContent = "";
+        flip = el("div", "flip"); flip.dataset.lv = String(S.lv);
+        const inner = el("div", "flip-in");
+        const front = el("div", "face front nl-window"); front.appendChild(el("span", "q", "?"));
+        const back = el("div", "face back nl-window"); const sym = el("span", "sym"); NL.colorDigits(sym, LEVELS[S.lv].sym);
+        if (LEVELS[S.lv].sym.length > 6) sym.classList.add("long");
+        back.appendChild(sym); inner.append(front, back); flip.appendChild(inner); p.appendChild(flip);
+        flip.setAttribute("aria-label", "Secret rule");
+      }
+      const open = S.phase === "cracked";
+      flip.classList.toggle("open", open);
+      flip.setAttribute("aria-label", open ? `The rule: ${LEVELS[S.lv].words}` : "The rule is a secret");
+      rig.classList.toggle("won", open);
+    } else {
+      rig.classList.remove("won");
+      $("#plate").textContent = "YOUR MACHINE";
+      p.textContent = "";
+      const row = el("div", "stages");
+      S.build.stages.forEach((st, i) => {
+        if (i) { const pp = el("span", "pipe"); pp.innerHTML = '<svg viewBox="0 0 16 22" aria-hidden="true"><path d="M3 4l9 7-9 7z" fill="#a9b7e3"/></svg>'; row.appendChild(pp); }
+        const w = el("div", "stage nl-window"); w.dataset.i = String(i);
+        if (S.build.step === "build" && S.build.sel === i) w.classList.add("sel");
+        const op = el("span", "sop"); NL.colorDigits(op, `${st.op} ${st.k === "" ? "_" : st.k}`);
+        const res = el("span", "sres");
+        const r = S.build.stageRes && S.build.stageRes[i];
+        if (r) { NL.colorDigits(res, "= " + fmtN(r.v)); if (r.rem) res.appendChild(el("small", "", ` r ${r.rem}`)); }
+        w.append(op, res); row.appendChild(w);
+      });
+      p.appendChild(row);
+    }
+  }
+
+  function renderTape(hiN, scroll) {
+    const tape = $("#tape"); tape.textContent = "";
+    let cols, heads;
+    if (S.mode === "mystery") {
+      cols = S.rows.map((r) => ({ n: r.n, vals: [{ v: r.out }] }));
+      heads = ["In", "Out"];
+    } else {
+      cols = S.build.rows.map((r) => ({ n: r.n, vals: r.steps.map((s) => ({ v: s.v, rem: s.rem })) }));
+      const st = S.build.stages;
+      heads = st.length === 2 ? ["In", `After ${st[0].op} ${st[0].k}`, "Out"] : ["In", "Out"];
+    }
+    $("#tapeCount").textContent = cols.length ? plural(cols.length, "number") + " tried" : "";
+    if (!cols.length) { tape.appendChild(el("div", "tape-empty", "Your In → Out table builds up here.")); return; }
+    const t = el("table"); const tb = el("tbody"); t.appendChild(tb);
+    heads.forEach((h, row) => {
+      const tr = el("tr"); tr.appendChild(el("th", "", h)); tr.firstChild.setAttribute("scope", "row");
+      cols.forEach((c) => {
+        const td = el("td"); if (c.n === hiN) td.classList.add("hi");
+        if (row === 0) NL.colorDigits(td, c.n);
+        else {
+          const v = c.vals[row - 1]; const sp = el("span"); NL.colorDigits(sp, fmtN(v.v)); td.appendChild(sp);
+          if (v.rem) td.appendChild(el("small", "", ` r ${v.rem}`));
+        }
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    tape.appendChild(t);
+    if (scroll) {
+      const idx = cols.findIndex((c) => c.n === hiN);
+      const td = tb.firstChild.children[idx + 1];
+      if (td) tape.scrollLeft = Math.max(0, td.offsetLeft - tape.clientWidth / 2);
+    }
+  }
+
+  function renderKnow() {
+    const know = $("#know"), next = $("#next");
+    const show = S.mode === "mystery" && S.phase === "explore";
+    know.hidden = !show;
+    next.hidden = !(S.mode === "mystery" && S.phase === "cracked");
+    if (show) {
+      const have = Math.min(3, S.rows.length), lit = S.rows.length >= 3;
+      know.classList.toggle("lit", lit);
+      know.setAttribute("aria-disabled", String(!lit));
+      know.innerHTML = BULB + "<span>I know the rule!</span>" + (lit ? "" : `<span class="dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i < have ? "on" : ""}"></i>`).join("")}</span>`);
+      know.setAttribute("aria-label", lit ? "I know the rule!" : `I know the rule. Try ${3 - have} more different numbers first.`);
+    }
+    if (!next.hidden) next.textContent = S.lv < LEVELS.length - 1 ? `Next machine: Level ${S.lv + 2}` : "Build your own machine";
+  }
+
+  function renderDisplay() {
+    const c = ctx(), val = $("#dispVal");
+    let v = entryGet(), lab = "Number to put in";
+    if (c === "answer") lab = "Your answer";
+    if (c === "operand") { v = S.build.stages[S.build.sel].k; lab = `Machine ${S.build.sel + 1} number`; }
+    $("#dispLab").textContent = lab;
+    if (v === "") { val.textContent = "_"; val.className = "val nl-num ph"; }
+    else { val.className = "val nl-num"; NL.colorDigits(val, v); }
+  }
+
+  function renderPad() {
+    const c = ctx(), ph = S.phase, mystery = S.mode === "mystery";
+    const head = $("#padHead");
+    const show = { head: false, choose: false, pick: false, builder: false, quick: false, keypad: false, go: false, edit: false, back: false };
+    head.textContent = "";
+    if (mystery && ph === "choose") {
+      Object.assign(show, { head: true, choose: true, back: true });
+      head.textContent = "How do you want to show the rule?";
+    } else if (mystery && ph === "pick") {
+      Object.assign(show, { head: true, pick: true, back: true });
+      head.textContent = "Which rule is inside the machine?";
+    } else if (mystery && ph === "checking") {
+      show.head = true; head.textContent = "Let's see if the machine agrees.";
+    } else if (c === "answer") {
+      Object.assign(show, { head: true, keypad: true, go: true, back: true });
+      head.append("What comes out if");
+      const b = el("span", "ball"); b.appendChild(el("span", "bn")); paintBall(b, S.predictN); head.appendChild(b);
+      head.append("goes in?");
+      $("#go").textContent = "That's my answer";
+    } else if (c === "operand") {
+      Object.assign(show, { head: true, builder: true, keypad: true, go: true });
+      head.textContent = "Build your machine";
+      $("#go").textContent = "Start the machine";
+    } else {
+      Object.assign(show, { quick: true, keypad: true, go: true, edit: !mystery });
+      $("#go").textContent = "Put it in";
+    }
+    head.hidden = !show.head;
+    $("#choose").hidden = !show.choose; $("#pick").hidden = !show.pick; $("#builder").hidden = !show.builder;
+    $("#quick").hidden = !show.quick; $("#keypad").hidden = !show.keypad; $("#go").hidden = !show.go;
+    $("#edit").hidden = !show.edit; $("#back").hidden = !show.back;
+    if (show.pick) renderCards();
+    if (show.builder) renderBuilder();
+    renderDisplay();
+  }
+
+  function renderCards() {
+    const box = $("#pick"); box.textContent = "";
+    S.cards.forEach((r, i) => {
+      const b = el("button", "rcard"); b.dataset.i = String(i); b.dataset.sym = r.sym;
+      const s = el("span", "sym"); NL.colorDigits(s, r.sym); b.appendChild(s);
+      b.appendChild(el("span", "rw", r.words));
+      b.setAttribute("aria-label", `${r.words} (${r.sym})`);
+      box.appendChild(b);
+    });
+  }
+
+  function renderBuilder() {
+    const box = $("#builder"); box.textContent = "";
+    S.build.stages.forEach((st, i) => {
+      const row = el("div", "brow");
+      const top = el("div", "brow-top"); top.appendChild(el("b", "", `Machine ${i + 1}`));
+      if (i === 1) { const rm = el("button", "nl-btn rm", "Remove"); rm.id = "removeStage"; top.appendChild(rm); }
+      row.appendChild(top);
+      const ctl = el("div", "brow-ctl"); const ops = el("div", "ops");
+      OPS.forEach((op) => {
+        const b = el("button", "nl-btn opb", op); b.dataset.stage = String(i); b.dataset.op = op;
+        b.setAttribute("aria-pressed", String(st.op === op));
+        b.setAttribute("aria-label", { "+": "add", [MINUS]: "take away", "×": "times", "÷": "divide" }[op]);
+        ops.appendChild(b);
+      });
+      const nb = el("button", "numbox nl-num"); nb.dataset.stage = String(i);
+      if (S.build.sel === i) nb.classList.add("sel");
+      if (st.k === "") nb.appendChild(el("span", "ph", "_")); else NL.colorDigits(nb, st.k);
+      nb.setAttribute("aria-label", `Machine ${i + 1} number. Tap, then type on the keypad.`);
+      ctl.append(ops, nb); row.appendChild(ctl); box.appendChild(row);
+    });
+    if (S.build.stages.length === 1) {
+      const add = el("button", "nl-btn side-btn", "+ Add a second machine after it"); add.id = "addStage"; box.appendChild(add);
+    }
+    box.appendChild(el("p", "nl-muted", "Tap a number box, then type 0 to 20 on the keypad."));
+    box.lastChild.style.margin = "0";
+    box.lastChild.style.fontWeight = "700";
+  }
+
+  function setStaged() {
+    if (running) return;
+    const c = ctx();
+    let n = null;
+    if (c === "feed" && entryGet() !== "") n = Number(entryGet());
+    if (c === "answer" || (S.mode === "mystery" && S.phase === "checking")) n = S.predictN;
+    inBall.getAnimations().forEach((a) => a.cancel());
+    if (n === null) inBall.hidden = true; else { inBall.hidden = false; paintBall(inBall, n); }
+    // out ball
+    outBall.getAnimations().forEach((a) => a.cancel());
+    if (c === "answer") {
+      outBall.className = "ball out-ball ghost";
+      paintBall(outBall, S.entry === "" ? "?" : Number(S.entry));
+      outTag.hidden = true;
+      return;
+    }
+    const last = S.mode === "mystery" ? S.lastOut : S.build.lastOut;
+    if (!last) { outBall.className = "ball out-ball empty"; outBall.querySelector(".bn").textContent = ""; outTag.hidden = true; }
+    else { outBall.className = "ball out-ball"; paintBall(outBall, last.v); outTag.hidden = !last.rem; outTag.textContent = last.rem ? `r ${last.rem}` : ""; }
+  }
+
+  function renderAll() {
+    renderModes(); renderLevels(); renderPanels(); renderTape(); renderKnow(); renderPad(); setStaged(); paintMsg();
+  }
+
+  // ---------- the machine running ----------
+  let running = false, epoch = 0;
+  const queue = []; let pumping = false;
+  function enqueue(job) { if (queue.length >= 3) return; queue.push(job); pump(); }
+  async function pump() {
+    if (pumping) return; pumping = true;
+    while (queue.length) { const job = queue.shift(); try { await job(); } catch (e) { running = false; console.warn(e); } }
+    pumping = false;
+  }
+
+  /** Drop n in, whir, pop the result out. results: [{v, rem}] for each stage. Returns false if the screen changed meanwhile. */
+  async function run(n, results) {
+    const ep = epoch, calm = NL.calm();
+    running = true;
+    paintBall(inBall, n); inBall.hidden = false; outTag.hidden = true;
+    if (S.mode === "build") { S.build.stageRes = null; renderPanels(); }
+    const drop = inBall.animate([
+      { transform: "translateY(0) scale(1)", opacity: 1 },
+      { transform: "translateY(40px) scale(.8)", opacity: 1, offset: 0.6 },
+      { transform: "translateY(74px) scale(.5)", opacity: 0 },
+    ], { duration: calm ? 260 : 520, easing: "ease-in", fill: "forwards" });
+    await drop.finished;
+    NL.sfx.clunk();
+    inBall.hidden = true; drop.cancel();
+    rig.classList.add("whir");
+    const tick = setInterval(() => NL.sfx.tick(), calm ? 160 : 110);
+    await wait(calm ? 450 : 1000);
+    clearInterval(tick); rig.classList.remove("whir");
+    if (ep !== epoch) { running = false; return false; }
+    const last = results[results.length - 1];
+    if (S.mode === "build") { S.build.stageRes = results; renderPanels(); }
+    outBall.className = "ball out-ball"; paintBall(outBall, last.v);
+    outTag.hidden = !last.rem; outTag.textContent = last.rem ? `r ${last.rem}` : "";
+    outBall.animate([
+      { transform: "translate(-40px,-14px) scale(.3)", opacity: 0 },
+      { transform: "translate(3px,3px) scale(1.12)", opacity: 1, offset: 0.7 },
+      { transform: "none", opacity: 1 },
+    ], { duration: calm ? 200 : 440, easing: "ease-out" });
+    NL.sfx.pop();
+    if (S.mode === "mystery") S.lastOut = { v: last.v }; else S.build.lastOut = { v: last.v, rem: last.rem };
+    running = false;
+    setStaged();
+    return true;
+  }
+
+  async function bounce(n) {
+    running = true;
+    paintBall(inBall, n); inBall.hidden = false;
+    await inBall.animate([{ transform: "none" }, { transform: "translateY(20px) scale(.92)" }, { transform: "translateY(-12px)" }, { transform: "none" }],
+      { duration: NL.calm() ? 200 : 520, easing: "ease-out" }).finished;
+    running = false;
+  }
+
+  function sayOut(v, rem) {
+    if (!rem) { NL.sayNumber(v); return; }
+    if (v >= 0 && v <= 100) Promise.resolve(NL.sayNumber(v)).then(() => NL.sayText(`remainder ${NL.words(rem)}`));
+    else NL.sayText(`${NL.words(v)} remainder ${NL.words(rem)}`);
+  }
+
+  // ---------- mystery mode ----------
+  function addRow(n, out) {
+    const dup = S.rows.some((r) => r.n === n);
+    if (!dup) S.rows.push({ n, out });
+    saveRows(); renderTape(n, true); renderKnow();
+    return dup;
+  }
+
+  function mysteryFeed(n) {
+    const R = LEVELS[S.lv];
+    enqueue(async () => {
+      const ep = epoch;
+      if (!R.accepts(n)) {
+        await bounce(n);
+        if (ep !== epoch) return;
+        NL.sfx.soft(); if (R.refuseVoice) NL.say(R.refuseVoice);
+        msg(R.refuse(n), "Try a different number.");
+        if (ctx() === "feed") { S.entry = String(n); renderDisplay(); }
+        setStaged();
+        return;
+      }
+      const out = R.f(n);
+      if (!(await run(n, [{ v: out }]))) return;
+      NL.sayNumber(out);
+      const dup = addRow(n, out);
+      const main = dup ? `${n} went in again. ${fmtN(out)} came out again.` : `${n} went in. ${fmtN(out)} came out.`;
+      let sub = dup ? "A machine always follows its rule." : "";
+      if (S.phase === "explore" && !dup) {
+        const left = 3 - S.rows.length;
+        if (left > 0) sub = `Try ${plural(left, "more different number")}.`;
+        else if (left === 0) sub = "Do you see the rule? Tap “I know the rule!” when you're ready.";
+      }
+      const neg = negLine([out]);
+      msg(main, [neg, sub].filter(Boolean).join(" "));
+    });
+  }
+
+  function pickPredict() {
+    const R = LEVELS[S.lv], tried = new Set(S.rows.map((r) => r.n));
+    const ok = (n) => R.accepts(n) && !tried.has(n) && n !== S.lastAsked && R.f(n) >= 0;
+    for (const hi of [12, 24, 50, 100]) {
+      const pool = []; for (let n = 1; n <= hi; n++) if (ok(n)) pool.push(n);
+      if (pool.length) return pool[NL.randInt(pool.length) - 1];
+    }
+    return R.accepts(7) ? 7 : 8;
+  }
+
+  function makeCards() {
+    const T = LEVELS[S.lv];
+    const seen = new Set();
+    const c = POOL.filter((r) => {
+      if (r === T || seen.has(r.sym) || S.wrong.has(r.sym) || equiv(r, T)) return false;
+      if (!S.rows.every((o) => r.accepts(o.n))) return false;
+      if (!S.rows.some((o) => r.f(o.n) !== o.out)) return false;
+      seen.add(r.sym); return true;
+    });
+    const score = new Map(c.map((r) => [r, S.rows.filter((o) => r.f(o.n) === o.out).length + (family(r) === family(T) ? 1 : 0) + Math.random() * 0.9]));
+    c.sort((a, b) => score.get(b) - score.get(a));
+    return shuffle([T, ...shuffle(c.slice(0, 5)).slice(0, 3)]);
+  }
+
+  function crack(lead) {
+    const R = LEVELS[S.lv], first = !cracked.has(S.lv);
+    cracked.add(S.lv); NL.store.set("machines-cracked", [...cracked].sort((a, b) => a - b));
+    S.phase = "cracked"; S.wrong.clear();
+    renderAll();
+    if (first) { const b = document.querySelector(`.lv[data-lv="${S.lv}"]`); if (b && !NL.calm()) b.classList.add("pop"); }
+    scrollLevelIntoView();
+    NL.sfx.yay(); NL.confetti();
+    setTimeout(() => NL.say("cracked", "You cracked the rule!"), 380);
+    const ex = S.rows[S.rows.length - 1];
+    const parts = [lead, `The rule is ${R.words.toLowerCase()}: ${R.show(ex.n)} = ${fmtN(R.f(ex.n))}.`, R.note || "", first ? `You earned the Level ${S.lv + 1} sticker.` : ""];
+    msg("You cracked the rule!", parts.filter(Boolean).join(" "));
+  }
+
+  function checkPredict(ans) {
+    const n = S.predictN, R = LEVELS[S.lv], out = R.f(n);
+    if (ans === out) {
+      S.phase = "checking"; renderPad(); renderKnow(); setStaged();
+      enqueue(async () => {
+        if (!(await run(n, [{ v: out }]))) return;
+        addRow(n, out);
+        crack(`You said ${fmtN(ans)}, and the machine made ${fmtN(out)}.`);
+      });
+    } else {
+      NL.sfx.soft(); NL.say("tryagain", "Not quite. Try another one!");
+      S.phase = "explore"; S.lastAsked = n; S.predictN = null; S.entry = String(n);
+      renderPad(); renderKnow(); setStaged();
+      msg("Not quite.", `Put ${n} in and watch what really comes out. Your table is still here.`);
+    }
+  }
+
+  function selectLevel(i) {
+    epoch++; queue.length = 0; running = false;
+    S.lv = i; S.rows = []; S.phase = "explore"; S.predictN = null; S.lastAsked = null; S.wrong.clear(); S.lastOut = null;
+    S.entry = String(startNumber(LEVELS[i]));
+    NL.store.set("machines-level", i); saveRows();
+    msg(`Level ${i + 1}: a new mystery machine.`, cracked.has(i) ? "You cracked this one before. Can you crack it again?" : "It has a secret rule. Put a number in and see what comes out.");
+    renderAll(); scrollLevelIntoView();
+  }
+
+  // ---------- build mode ----------
+  function applyOp(op, k, x) {
+    if (op === "+") return { v: x + k };
+    if (op === MINUS) return { v: x - k };
+    if (op === "×") return { v: x * k };
+    const q = Math.floor(x / k); return { v: q, rem: x - q * k };
+  }
+  function buildFeed(n) {
+    enqueue(async () => {
+      const steps = []; let v = n;
+      for (const st of S.build.stages) { const k = Number(st.k), r = applyOp(st.op, k, v); steps.push({ from: v, op: st.op, k, v: r.v, rem: r.rem || 0 }); v = r.v; }
+      if (!(await run(n, steps.map((s) => ({ v: s.v, rem: s.rem }))))) return;
+      const last = steps[steps.length - 1];
+      sayOut(last.v, last.rem);
+      const dup = S.build.rows.some((r) => r.n === n);
+      if (!dup) S.build.rows.push({ n, steps });
+      renderTape(n, true);
+      const eq = steps.map((s) => `${fmtN(s.from)} ${s.op} ${s.k} = ${fmtN(s.v)}${s.rem ? ` remainder ${s.rem}` : ""}`);
+      const notes = [];
+      if (steps.length === 2 && steps[0].rem) notes.push(`The remainder stays behind. Only the ${fmtN(steps[0].v)} goes on.`);
+      notes.push(negLine(steps.map((s) => s.v)));
+      if (!dup && S.build.rows.length === 1 && steps.length === 1) notes.push("Try more numbers and watch the table.");
+      msg(eq.join(", then ") + ".", notes.filter(Boolean).join(" "));
+    });
+  }
+  function startBuild() {
+    const st = S.build.stages;
+    for (let i = 0; i < st.length; i++) {
+      if (st[i].k === "") { S.build.sel = i; S.build.fresh = true; renderPad(); renderPanels(); padHint(`Type a number for Machine ${i + 1}.`, true); return; }
+      if (st[i].op === "÷" && Number(st[i].k) === 0) { S.build.sel = i; renderPad(); renderPanels(); padHint("Dividing by 0 has no answer. Pick a number from 1 to 20.", true); NL.sfx.soft(); return; }
+    }
+    const sig = JSON.stringify(st);
+    if (sig !== S.build.sig) { S.build.rows = []; S.build.lastOut = null; S.build.stageRes = null; S.build.sig = sig; }
+    S.build.step = "run";
+    NL.store.set("machines-build", { stages: st });
+    S.build.entry = String(NL.randBetween(1, 9));
+    NL.sfx.whoosh();
+    msg("Your machine is ready.", st.length === 2 ? "A number goes through Machine 1, then Machine 2. Put a number in." : "Put a number in and see what comes out.");
+    renderAll();
+  }
+
+  // ---------- input ----------
+  function pressDigit(d) {
+    const c = ctx();
+    if (c === "none") return;
+    NL.sfx.tick();
+    if (c === "operand") {
+      const st = S.build.stages[S.build.sel];
+      const base = S.build.fresh ? "" : st.k; S.build.fresh = false;
+      const next = (base === "0" ? "" : base) + d;
+      if (Number(next) > 20) { padHint("Machine numbers go from 0 to 20.", true); return; }
+      st.k = next;
+      if (st.op === "÷" && next === "0") padHint("Dividing by 0 has no answer. Pick 1 to 20."); else padHint("");
+      renderBuilder(); renderPanels(); renderDisplay();
+      return;
+    }
+    const cur = entryGet();
+    const next = (cur === "0" ? "" : cur) + d;
+    const max = c === "answer" ? 99999 : 100;
+    if (Number(next) > max) { padHint(c === "answer" ? "That is as long as an answer can be here." : "The machine takes numbers from 0 to 100.", true); return; }
+    entrySet(next); renderDisplay(); setStaged(); padHint("");
+  }
+  function backspace() {
+    const c = ctx();
+    if (c === "none") return;
+    NL.sfx.tick();
+    if (c === "operand") { const st = S.build.stages[S.build.sel]; st.k = st.k.slice(0, -1); S.build.fresh = false; renderBuilder(); renderPanels(); renderDisplay(); return; }
+    entrySet(entryGet().slice(0, -1)); renderDisplay(); setStaged();
+  }
+  function go() {
+    const c = ctx();
+    if (c === "feed") {
+      if (entryGet() === "") { padHint("Type a number first, or tap a number ball.", true); return; }
+      const n = Number(entryGet()); entrySet(""); renderDisplay();
+      feedNumber(n);
+    } else if (c === "answer") {
+      if (S.entry === "") { padHint("Type your answer on the keypad.", true); return; }
+      const a = Number(S.entry); S.entry = "";
+      checkPredict(a);
+    } else if (c === "operand") startBuild();
+  }
+  function feedNumber(n) { if (S.mode === "mystery") mysteryFeed(n); else buildFeed(n); }
+
+  $("#keys").addEventListener("click", (e) => { const k = e.target.closest(".key"); if (k) pressDigit(k.dataset.d); });
+  $("#bksp").addEventListener("click", backspace);
+  $("#go").addEventListener("click", go);
+  quick.addEventListener("click", (e) => {
+    const b = e.target.closest(".qb"); if (!b || ctx() !== "feed") return;
+    let n = b.dataset.n === "random" ? null : Number(b.dataset.n);
+    if (n === null) { const R = S.mode === "mystery" ? LEVELS[S.lv] : null; n = R && R.rnd ? R.rnd() : NL.randBetween(0, 100); }
+    entrySet(""); renderDisplay();
+    feedNumber(n);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (/^[0-9]$/.test(e.key)) { pressDigit(e.key); e.preventDefault(); }
+    else if (e.key === "Backspace") { backspace(); e.preventDefault(); }
+    else if (e.key === "Enter" && !(e.target instanceof HTMLButtonElement)) { go(); e.preventDefault(); }
+  });
+
+  $("#know").addEventListener("click", () => {
+    if (S.rows.length < 3) {
+      const left = 3 - S.rows.length;
+      msg(`Feed it ${plural(left, "more different number")} first.`, "Then you can tell the machine its rule.");
+      return;
+    }
+    NL.sfx.chime();
+    S.phase = "choose"; renderKnow(); renderPad(); setStaged();
+  });
+  $("#choosePredict").addEventListener("click", () => {
+    S.predictN = pickPredict(); S.entry = ""; S.phase = "predict";
+    renderPad(); setStaged();
+    msg(`The machine picked ${S.predictN}.`, "What will come out? Type it on the keypad.");
+  });
+  $("#choosePick").addEventListener("click", () => {
+    S.cards = makeCards(); S.phase = "pick"; renderPad(); setStaged();
+    msg("Look at your table.", "Which rule makes every In number into its Out number?");
+  });
+  $("#pick").addEventListener("click", (e) => {
+    const b = e.target.closest(".rcard"); if (!b || S.phase !== "pick") return;
+    const r = S.cards[Number(b.dataset.i)], T = LEVELS[S.lv];
+    if (r === T) { crack(""); return; }
+    NL.sfx.soft(); NL.say("tryagain", "Not quite. Try another one!");
+    S.wrong.add(r.sym);
+    const o = S.rows.find((x) => r.f(x.n) !== x.out);
+    S.phase = "explore"; renderKnow(); renderPad(); setStaged();
+    msg("Not quite.", o ? `The rule ${r.sym} turns ${o.n} into ${fmtN(r.f(o.n))}, but this machine made ${fmtN(o.out)}. Keep feeding numbers, then try again.` : "Keep feeding numbers, then try again.");
+  });
+  $("#back").addEventListener("click", () => {
+    S.phase = "explore"; S.predictN = null; S.entry = S.entry || "";
+    renderKnow(); renderPad(); setStaged();
+    msg("Keep feeding numbers.", "Tap “I know the rule!” any time you're ready.");
+  });
+  $("#next").addEventListener("click", () => {
+    if (S.lv < LEVELS.length - 1) { NL.sfx.whoosh(); selectLevel(S.lv + 1); }
+    else setMode("build");
+  });
+  $("#levels").addEventListener("click", (e) => {
+    const b = e.target.closest(".lv"); if (!b) return;
+    const i = Number(b.dataset.lv);
+    if (!unlocked(i)) { msg(`Level ${i + 1} is still locked.`, `Crack Level ${i} to open it.`); return; }
+    if (i === S.lv && S.phase !== "cracked") return;
+    NL.sfx.pop(); selectLevel(i);
+  });
+
+  // build-mode controls
+  $("#builder").addEventListener("click", (e) => {
+    const t = e.target.closest("button"); if (!t) return;
+    if (t.classList.contains("opb")) {
+      const i = Number(t.dataset.stage); S.build.stages[i].op = t.dataset.op; S.build.sel = i; S.build.fresh = true; NL.sfx.tick();
+      padHint(t.dataset.op === "÷" && S.build.stages[i].k === "0" ? "Dividing by 0 has no answer. Pick 1 to 20." : "");
+    } else if (t.classList.contains("numbox")) {
+      S.build.sel = Number(t.dataset.stage); S.build.fresh = true; NL.sfx.tick();
+    } else if (t.id === "addStage") {
+      S.build.stages.push({ op: "+", k: "1" }); S.build.sel = 1; S.build.fresh = true; NL.sfx.pop();
+    } else if (t.id === "removeStage") {
+      S.build.stages.length = 1; S.build.sel = 0; S.build.fresh = true; NL.sfx.tick();
+    } else return;
+    renderBuilder(); renderPanels(); renderDisplay();
+  });
+  $("#edit").addEventListener("click", () => {
+    epoch++; queue.length = 0; running = false;
+    S.build.step = "build"; S.build.sel = 0; S.build.fresh = true;
+    msg("Change your machine.", "Pick an operation and a number for each machine. Then start it.");
+    renderAll();
+  });
+  $("#panels").addEventListener("click", (e) => {
+    const s = e.target.closest(".stage"); if (!s || S.mode !== "build" || S.build.step !== "build") return;
+    S.build.sel = Number(s.dataset.i); S.build.fresh = true; renderBuilder(); renderPanels(); renderDisplay();
+  });
+
+  function setMode(m) {
+    if (S.mode === m) return;
+    epoch++; queue.length = 0; running = false;
+    S.mode = m; NL.store.set("machines-mode", m);
+    if (m === "mystery" && S.phase === "checking") S.phase = "explore";
+    if (m === "build" && !S.build.msg) {
+      if (S.build.step === "build") msg("Build your own machine.", "Pick +, −, × or ÷ and a number. You can add a second machine after it.");
+      else msg("Your machine is ready.", "Put a number in and see what comes out.");
+    }
+    if (S.build.step === "run" && S.build.entry === "" && m === "build") S.build.entry = String(NL.randBetween(1, 9));
+    renderAll();
+    if (m === "mystery") scrollLevelIntoView();
+  }
+  $("#modeMystery").addEventListener("click", () => { NL.sfx.tick(); setMode("mystery"); });
+  $("#modeBuild").addEventListener("click", () => { NL.sfx.tick(); setMode("build"); });
+
+  // warm the voice clips after the first tap (audio unlocks then)
+  document.addEventListener("pointerdown", () => {
+    setTimeout(() => NL.preload(["cracked", "tryagain", "odd", ...Array.from({ length: 31 }, (_, i) => "n" + i)]), 0);
+  }, { once: true });
+
+  // ---------- start ----------
+  if (S.rows.length) msg(`Level ${S.lv + 1}. Your table is still here.`, S.rows.length >= 3 ? "Feed more numbers, or tap “I know the rule!”" : `Try ${plural(3 - S.rows.length, "more different number")}.`);
+  else msg("This machine has a secret rule.", "A number goes in, and a different number comes out. Put a number in to find the rule.");
+  if (S.mode === "build") {
+    S.build.msg = S.build.step === "build"
+      ? { main: "Build your own machine.", sub: "Pick +, −, × or ÷ and a number. You can add a second machine after it." }
+      : { main: "Your machine is ready.", sub: "Put a number in and see what comes out." };
+  }
+  renderAll();
+  requestAnimationFrame(scrollLevelIntoView);
+})();
+</script>
+</body>
+</html>

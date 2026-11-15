@@ -1,0 +1,126 @@
+/* Number Lab shared design system. Every game page links this file.
+   Look: pale sky page, white cards, dark-navy "machine" panels where colored digits glow,
+   one sunny-yellow primary button per screen. Digits always use the same color (1 red, 2 orange ...). */
+:root {
+  --bg: #e8f1fa;
+  --surface: #ffffff;
+  --surface-2: #f3f8fd;
+  --fg: #1c2448;
+  --muted: #5a6590;
+  --line: #c9d5ea;
+  --machine: #1f2a57;
+  --machine-edge: #131a3a;
+  --window: #0f1533;
+  --window-fg: #e9edff;
+  --button: #ffc93c;
+  --button-edge: #d99a12;
+  --button-fg: #1c2448;
+  --good: #2f9e6e;
+  --focus: #5478ed;
+  --d0: #8e98bf; --d1: #f04d54; --d2: #ff8f33; --d3: #f7c22c; --d4: #5cc14a;
+  --d5: #2fb7d6; --d6: #5478ed; --d7: #9e66e6; --d8: #f272b3; --d9: #1fae94;
+  --radius: 22px;
+  --font-display: "Fredoka", "Nunito", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-body: "Nunito", ui-rounded, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1430; --surface: #182044; --surface-2: #1d2752; --fg: #eef1ff; --muted: #a2abd4; --line: #2c3766;
+    --machine: #27336a; --machine-edge: #0a0f26; --window: #090d22; --window-fg: #e9edff;
+    --button: #ffc93c; --button-edge: #b47d0a; --button-fg: #1c2448; --good: #4cc792; --focus: #8aa4ff;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; min-height: 100vh; min-height: 100dvh;
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 16px; line-height: 1.4;
+  -webkit-tap-highlight-color: transparent;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; touch-action: manipulation; }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.1; margin: 0; text-wrap: balance; }
+
+.nl-app {
+  max-width: 1100px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 10px 28px;
+  display: grid; gap: 16px; align-content: start;
+}
+
+/* top bar: Home button, page title, sound button */
+.nl-top { display: flex; align-items: center; gap: 12px; min-height: 52px; }
+.nl-top h1 { flex: 1; min-width: 0; font-size: 22px; }
+.nl-top h1 small { display: block; font-family: var(--font-body); font-size: 12px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); margin-top: 2px; }
+.nl-round {
+  flex: none; width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface);
+  display: grid; place-items: center; text-decoration: none; color: var(--fg);
+}
+.nl-round svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.nl-round[aria-pressed="false"] { color: var(--muted); }
+
+/* surfaces */
+.nl-card { background: var(--surface); border: 2px solid var(--line); border-radius: var(--radius); padding: 16px; min-width: 0; }
+.nl-machine {
+  background: var(--machine); color: var(--window-fg); border-radius: 26px; padding: 14px;
+  box-shadow: inset 0 -8px 0 var(--machine-edge), 0 10px 24px rgba(10, 16, 50, 0.16);
+}
+.nl-window { background: var(--window); color: var(--window-fg); border-radius: 18px; border: 4px solid var(--machine-edge); padding: 10px 14px; }
+
+/* buttons */
+.nl-btn {
+  border: 2px solid var(--line); background: var(--surface); border-radius: 14px; padding: 10px 16px;
+  font-family: var(--font-display); font-weight: 600; font-size: 17px; line-height: 1.1;
+  box-shadow: 0 3px 0 var(--line); transition: transform 0.05s, box-shadow 0.05s;
+}
+.nl-btn:active:not([disabled]) { transform: translateY(3px); box-shadow: 0 0 0 var(--line); }
+.nl-btn[disabled] { opacity: 0.45; cursor: default; }
+.nl-btn[aria-pressed="true"] { background: var(--fg); color: var(--surface); border-color: var(--fg); box-shadow: 0 3px 0 var(--muted); }
+.nl-big {
+  border: none; border-radius: 999px; padding: 18px 30px; min-height: 72px;
+  background: var(--button); color: var(--button-fg); font-family: var(--font-display); font-weight: 700; font-size: 28px;
+  box-shadow: 0 7px 0 var(--button-edge); transition: transform 0.06s, box-shadow 0.06s; user-select: none; -webkit-user-select: none;
+}
+.nl-big:active:not([disabled]) { transform: translateY(5px); box-shadow: 0 2px 0 var(--button-edge); }
+.nl-big[disabled] { opacity: 0.6; cursor: default; }
+.nl-seg { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* chips + text */
+.nl-chip { display: inline-block; font-family: var(--font-display); font-weight: 600; font-size: 16px; padding: 6px 12px; border-radius: 12px; background: var(--surface-2); border: 2px solid var(--line); }
+.nl-chip.star { border-color: var(--d3); }
+.nl-muted { color: var(--muted); }
+.nl-label { font-weight: 800; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.nl-num { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; }
+.nl-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* place-value blocks (NL.blocks) */
+.nl-blocks { display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end; }
+.nl-bgroup { display: grid; gap: 6px; justify-items: start; }
+.nl-bcap { font-family: var(--font-display); font-weight: 600; font-size: 15px; }
+.nl-flats { display: flex; flex-wrap: wrap; gap: 5px; max-width: 280px; }
+.nl-flat { width: 60px; height: 60px; border-radius: 5px; background-color: var(--c);
+  background-image: linear-gradient(rgba(0,0,0,.16) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,.16) 1px, transparent 1px);
+  background-size: 6px 6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.nl-rods { display: grid; gap: 4px; }
+.nl-rod { display: grid; grid-template-columns: repeat(10, 13px); gap: 2px; padding: 2px; border-radius: 5px; background: rgba(0,0,0,.12); }
+.nl-rod i { height: 13px; border-radius: 3px; background: var(--c); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
+.nl-frame { display: grid; grid-template-columns: repeat(5, var(--cube, 34px)); grid-auto-rows: var(--cube, 34px); gap: 4px; }
+.nl-slot { border-radius: 7px; border: 2px dashed var(--line); position: relative; }
+.nl-slot.on { border: none; background: var(--c); box-shadow: inset 0 -4px 0 rgba(0,0,0,.18), inset 0 3px 0 rgba(255,255,255,.28); }
+.nl-slot.on::after { content: ""; position: absolute; left: 22%; right: 22%; top: 32%; height: 5px;
+  background: radial-gradient(circle at 3px 2.5px, #1c2448 2.4px, transparent 3px), radial-gradient(circle at calc(100% - 3px) 2.5px, #1c2448 2.4px, transparent 3px); }
+
+/* colored digits: <span class="nl-digits">…</span> filled by NL.colorDigits */
+.nl-digits span { color: var(--c); }
+
+/* confetti canvas */
+canvas.nl-confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

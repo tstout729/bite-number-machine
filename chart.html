@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1f2a57">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Pattern Chart · Number Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="shared/app.css">
+<style>
+  /* Layout: tool row, then the chart (pager + 10x10 grid) and the tool panel.
+     Phone: one column, chart edge to edge so cells are ~34px. Wide screens: chart left, panel right. */
+  .tools { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .tools .nl-btn { min-height: 52px; padding: 8px 3px; font-size: 15px; }
+  @media (min-width: 600px) { .tools .nl-btn { font-size: 17px; } }
+
+  .board { display: grid; gap: 16px; }
+  .chartwrap { display: grid; gap: 10px; width: 100%; max-width: 600px; justify-self: center; align-content: start; }
+  .panel { width: 100%; max-width: 600px; justify-self: center; display: grid; gap: 14px; align-content: start; }
+  @media (min-width: 900px) {
+    .board { grid-template-columns: minmax(0, 560px) minmax(0, 1fr); align-items: start; column-gap: 24px; }
+    .chartwrap, .panel { max-width: none; }
+  }
+
+  /* pager */
+  .pager { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: center; gap: 10px; }
+  .pager .nl-round { width: 48px; height: 48px; }
+  .pager .nl-round[disabled] { opacity: 0.35; cursor: default; }
+  .pagewin { text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 22px; padding: 6px 12px; line-height: 1.1; }
+  .pagewin .to { color: var(--window-fg); opacity: 0.7; font-size: 17px; font-weight: 600; margin: 0 6px; }
+
+  /* the chart */
+  .grid {
+    container-type: inline-size; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 2px;
+    user-select: none; -webkit-user-select: none;
+  }
+  @media (min-width: 600px) { .grid { gap: 4px; } }
+  .grid.painting { touch-action: none; }
+  .tile {
+    position: relative; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 9px;
+    background: var(--surface); color: var(--fg); box-shadow: inset 0 0 0 1.5px var(--line);
+    font-family: var(--font-display); font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1;
+    display: grid; place-items: center; font-size: min(5.1cqw, 26px); letter-spacing: -0.01em;
+    transition: background-color 0.25s, color 0.25s;
+  }
+  .tile.w3 { font-size: min(4.1cqw, 21px); letter-spacing: -0.03em; }
+  .tile.w4 { font-size: min(3.4cqw, 17px); letter-spacing: -0.04em; }
+  .tile:focus-visible { z-index: 4; }
+  /* skip count and paint marks: digit-color fill, navy text */
+  .tile.lit { color: #1c2448; box-shadow: none; font-weight: 700; }
+  .tile.multi { box-shadow: inset 0 0 0 2px var(--fg); }
+  /* sieve */
+  .tile[data-s="one"] { color: var(--muted); background: var(--surface-2); opacity: 0.5; }
+  .tile[data-s="x"] { color: var(--muted); background: var(--surface-2); }
+  .tile[data-s="x"]::after {
+    content: ""; position: absolute; inset: 16%; pointer-events: none;
+    background: linear-gradient(to top right, transparent calc(50% - 1.6px), var(--k) calc(50% - 1.6px), var(--k) calc(50% + 1.6px), transparent calc(50% + 1.6px));
+  }
+  .tile[data-s="prime"] { color: var(--fg); font-weight: 700; background: color-mix(in srgb, var(--k) 16%, var(--surface)); box-shadow: none; }
+  .tile[data-s="prime"]::before { content: ""; position: absolute; inset: 5%; border-radius: 46%; border: 3px solid var(--k); pointer-events: none; }
+  .tile.w3[data-s="prime"]::before, .tile.w4[data-s="prime"]::before { inset: 3%; border-width: 2.5px; }
+  .tile.active[data-s="prime"]::before { box-shadow: 0 0 0 3px color-mix(in srgb, var(--k) 40%, transparent); }
+  /* find it */
+  .tile.found { background: var(--good); color: #fff; box-shadow: none; font-weight: 700; }
+  .tile.hintrow { box-shadow: inset 0 0 0 2.5px var(--focus); background: color-mix(in srgb, var(--focus) 12%, var(--surface)); }
+  /* missing numbers */
+  .tile.blank { background: transparent; box-shadow: none; border: 2px dashed var(--muted); color: var(--muted); }
+  .tile.blank.sel { border: 3px solid var(--focus); background: color-mix(in srgb, var(--focus) 18%, var(--surface)); color: var(--focus); }
+  .tile.filled { box-shadow: inset 0 0 0 2.5px var(--good); color: var(--good); font-weight: 700; }
+
+  /* panel pieces */
+  .say { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+  .say.soft { color: var(--muted); font-weight: 700; font-size: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row .nl-btn { min-height: 48px; }
+  .pair { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .pair .nl-btn { min-height: 48px; padding: 10px 4px; }
+
+  .steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px 6px; }
+  .step { min-height: 50px; padding: 6px 0; font-size: 21px; box-shadow: 0 4px 0 var(--c); }
+  .step:active:not([disabled]) { box-shadow: 0 0 0 var(--c); }
+  .step[aria-pressed="true"] { background: var(--c); color: #1c2448; border-color: var(--c); box-shadow: 0 4px 0 color-mix(in srgb, var(--c) 55%, #000); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips:empty { display: none; }
+  .lchip { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; }
+  .sw { width: 16px; height: 16px; border-radius: 5px; background: var(--c); flex: none; }
+  .overlap { padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 2px solid var(--line); font-size: 16px; }
+
+  .sievebtns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .sievebtns .nl-big { grid-column: 1 / -1; }
+  .sievebtns .nl-btn { min-height: 50px; }
+  .progress { display: flex; gap: 5px; }
+  .progress i { flex: 1; height: 8px; border-radius: 4px; background: var(--line); }
+  .progress i.on { background: var(--good); }
+
+  .win {
+    display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; text-align: center;
+    font-family: var(--font-display); font-weight: 700; font-size: 32px; line-height: 1.1;
+  }
+  .win small { display: block; width: 100%; font-family: var(--font-body); font-size: 15px; font-weight: 800; color: var(--window-fg); opacity: 0.8; }
+
+  .finder { display: flex; align-items: center; gap: 12px; }
+  .finder .nl-window { flex: 1; min-width: 0; display: grid; justify-items: center; gap: 2px; padding: 8px 12px 10px; }
+  .finder .lbl { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
+  .finder .big { font-size: 58px; line-height: 1; }
+  .finder .nl-round { width: 56px; height: 56px; background: var(--machine-edge); border-color: var(--window); color: var(--window-fg); }
+  .finder .nl-round svg { width: 26px; height: 26px; }
+
+  .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .choice {
+    min-height: 76px; border-radius: 18px; border: 4px solid var(--machine-edge); background: var(--window); color: var(--window-fg);
+    font-family: var(--font-display); font-size: 34px; font-weight: 700; box-shadow: 0 5px 0 var(--machine-edge);
+    transition: transform 0.05s, box-shadow 0.05s, opacity 0.2s;
+  }
+  .choice:active:not([disabled]) { transform: translateY(4px); box-shadow: 0 1px 0 var(--machine-edge); }
+  .choice[disabled] { opacity: 0.28; cursor: default; }
+
+  .swatches { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+  .swatch {
+    min-height: 54px; border-radius: 14px; border: 3px solid transparent; background: var(--c); color: #1c2448;
+    font-family: var(--font-display); font-size: 22px; font-weight: 700; box-shadow: 0 4px 0 color-mix(in srgb, var(--c) 55%, #000);
+  }
+  .swatch[aria-pressed="true"] { border-color: var(--fg); box-shadow: 0 0 0 3px var(--surface), 0 0 0 6px var(--fg); }
+</style>
+</head>
+<body>
+<div class="nl-app">
+  <header class="nl-top">
+    <a class="nl-round" href="./" aria-label="Back to Number Lab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></a>
+    <h1>Pattern Chart<small>Patterns hiding in numbers</small></h1>
+    <button class="nl-round nl-sound" aria-label="Sound"></button>
+  </header>
+
+  <nav class="tools" aria-label="Tools">
+    <button class="nl-btn" id="tool-skip" data-tool="skip">Skip count</button>
+    <button class="nl-btn" id="tool-sieve" data-tool="sieve">Primes</button>
+    <button class="nl-btn" id="tool-find" data-tool="find">Find it</button>
+    <button class="nl-btn" id="tool-missing" data-tool="missing">Missing</button>
+    <button class="nl-btn" id="tool-paint" data-tool="paint">Paint</button>
+  </nav>
+
+  <main class="board">
+    <section class="chartwrap" aria-label="Number chart">
+      <div class="pager">
+        <button class="nl-round" id="prev" aria-label="Previous hundred"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <div class="nl-window pagewin" id="pageLabel" aria-live="polite"></div>
+        <button class="nl-round" id="next" aria-label="Next hundred"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div class="grid" id="grid" role="group" aria-label="Numbers"></div>
+    </section>
+
+    <section class="nl-card panel" id="p-skip" aria-label="Skip count" hidden>
+      <div class="nl-label">Count by</div>
+      <div class="steps" id="steps"></div>
+      <div class="pair">
+        <button class="nl-btn" id="skipPause" disabled>Pause</button>
+        <button class="nl-btn" id="skipAll" disabled>Show all</button>
+        <button class="nl-btn" id="skipClear" disabled>Clear</button>
+      </div>
+      <p class="say" id="skipText" aria-live="polite"></p>
+      <div class="chips" id="skipChips"></div>
+      <p class="say overlap" id="skipOverlap" hidden></p>
+    </section>
+
+    <section class="nl-card panel" id="p-sieve" aria-label="Prime sieve" hidden>
+      <div class="sievebtns">
+        <button class="nl-big" id="sieveNext">Next step</button>
+        <button class="nl-btn" id="sieveAuto" aria-pressed="false">Auto</button>
+        <button class="nl-btn" id="sieveReset">Start over</button>
+      </div>
+      <div class="progress" id="sieveProgress" aria-hidden="true"></div>
+      <p class="say" id="sieveText" aria-live="polite"></p>
+      <div class="nl-machine win" id="sieveWin" hidden></div>
+    </section>
+
+    <section class="nl-card panel" id="p-find" aria-label="Find it" hidden>
+      <div class="nl-machine finder">
+        <div class="nl-window"><span class="lbl">Find</span><span class="big nl-num" id="findNum"></span></div>
+        <button class="nl-round" id="findHear" aria-label="Hear the number again"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+      </div>
+      <p class="say" id="findText" aria-live="polite"></p>
+      <div class="row">
+        <button class="nl-big" id="findNew">New number</button>
+        <span class="nl-chip">Found <span id="foundCount">0</span></span>
+      </div>
+    </section>
+
+    <section class="nl-card panel" id="p-missing" aria-label="Missing numbers" hidden>
+      <p class="say" id="missText" aria-live="polite"></p>
+      <div class="choices" id="choices" hidden></div>
+      <div class="nl-machine win" id="missWin" hidden></div>
+      <div class="row">
+        <button class="nl-btn" id="missNew">New puzzle</button>
+        <span class="nl-chip">Filled <span id="missCount">0</span> of 8</span>
+      </div>
+    </section>
+
+    <section class="nl-card panel" id="p-paint" aria-label="Paint" hidden>
+      <div class="nl-label">Pick a color</div>
+      <div class="swatches" id="swatches"></div>
+      <p class="say soft">Tap squares to color them, or drag to paint a line. Tap a square again to erase it.</p>
+      <div class="row"><button class="nl-btn" id="paintClear">Clear the chart</button></div>
+    </section>
+  </main>
+</div>
+<script src="shared/app.js"></script>
+<script>
+(() => {
+  "use strict";
+  const $ = (s) => document.querySelector(s);
+  const NAVY = "#1c2448";
+  const PAGES = 10;
+  const TOOLS = ["skip", "sieve", "find", "missing", "paint"];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  const lcm = (a, b) => (a / gcd(a, b)) * b;
+  const andList = (a) => (a.length < 2 ? String(a[0] ?? "") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1]);
+  const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = NL.randInt(i + 1) - 1; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  let tool = NL.store.get("chart-tool", "skip");
+  if (!TOOLS.includes(tool)) tool = "skip";
+  let page = Number(NL.store.get("chart-page", 0));
+  if (!Number.isInteger(page) || page < 0 || page >= PAGES) page = 0;
+  const S = () => page * 100 + 1;
+  const E = () => page * 100 + 100;
+  const onPage = (n) => n >= S() && n <= E();
+  const rowStart = (n) => Math.floor((n - 1) / 10) * 10 + 1;
+
+  // ---------- the grid ----------
+  const grid = $("#grid");
+  const tiles = [];
+  for (let i = 0; i < 100; i++) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "tile";
+    grid.appendChild(b); tiles.push(b);
+  }
+  const tileOf = (n) => (onPage(n) ? tiles[n - S()] : null);
+
+  function fillOf(cols) {
+    if (cols.length === 1) return cols[0];
+    // hard diagonal split with a thin light seam between colors, so overlaps read as two (or more) counts
+    const w = 100 / cols.length, seam = "rgba(255,255,255,0.95)";
+    const stops = cols.map((c, i) => {
+      const a = i * w, b = (i + 1) * w;
+      return `${c} ${i ? `calc(${a}% + 1.5px)` : "0%"} ${i < cols.length - 1 ? `calc(${b}% - 1.5px)` : "100%"}`
+        + (i < cols.length - 1 ? `, ${seam} calc(${b}% - 1.5px) calc(${b}% + 1.5px)` : "");
+    });
+    return `linear-gradient(135deg, ${stops.join(", ")})`;
+  }
+
+  function renderTile(i) {
+    const el = tiles[i], n = S() + i;
+    let text = String(n);
+    el.dataset.n = n;
+    el.className = "tile w" + text.length;
+    el.style.cssText = "";
+    el.removeAttribute("data-s");
+    el.removeAttribute("aria-label");
+    if (tool === "skip") {
+      const cols = layers.filter((L) => n % L.s === 0 && (L.done || n <= L.cursor)).map((L) => L.color);
+      if (cols.length) { el.classList.add("lit"); el.style.background = fillOf(cols); }
+      if (cols.length > 1) el.classList.add("multi");
+    } else if (tool === "sieve") {
+      const st = sieve.st.get(n);
+      if (st) { el.dataset.s = st.s; el.style.setProperty("--k", st.c); }
+      if (sieve.active === n) el.classList.add("active");
+    } else if (tool === "find") {
+      if (find.done && n === find.target) el.classList.add("found");
+      else if (find.hintRow && rowStart(n) === find.hintRow) el.classList.add("hintrow");
+    } else if (tool === "missing") {
+      if (miss.blanks.has(n)) {
+        text = "?"; el.classList.add("blank"); el.setAttribute("aria-label", "Missing number");
+        if (miss.sel === n) el.classList.add("sel");
+      } else if (miss.filled.has(n)) el.classList.add("filled");
+    } else if (tool === "paint") {
+      const d = paint.get(n);
+      if (d !== undefined) { el.classList.add("lit"); el.style.background = NL.digitVar(d); }
+    }
+    el.textContent = text;
+  }
+  const renderAll = () => { for (let i = 0; i < 100; i++) renderTile(i); };
+  const renderN = (n) => { if (onPage(n)) renderTile(n - S()); };
+
+  /** Small bounce. Calm mode: barely there. */
+  function bounce(el) {
+    if (!el) return;
+    const c = NL.calm();
+    el.style.zIndex = "3";
+    const a = el.animate(
+      [{ transform: "scale(1)" }, { transform: `scale(${c ? 1.06 : 1.28})`, offset: 0.4 }, { transform: "scale(1)" }],
+      { duration: c ? 160 : 300, easing: "ease-out" });
+    a.onfinish = a.oncancel = () => { el.style.zIndex = ""; };
+  }
+
+  // ---------- pager ----------
+  function paintPager() {
+    const lab = $("#pageLabel");
+    lab.textContent = "";
+    const a = document.createElement("span"), to = document.createElement("span"), b = document.createElement("span");
+    NL.colorDigits(a, S()); NL.colorDigits(b, E());
+    to.className = "to"; to.textContent = "to";
+    lab.append(a, to, b);
+    $("#prev").disabled = page === 0;
+    $("#next").disabled = page === PAGES - 1;
+    grid.setAttribute("aria-label", `Numbers ${S()} to ${E()}`);
+  }
+  function setPage(p) {
+    if (p < 0 || p >= PAGES || p === page) return;
+    finishAnim(); sieveStopAuto(); flushMarks(true);
+    page = p; NL.store.set("chart-page", p);
+    NL.sfx.whoosh();
+    paintPager();
+    if (tool === "sieve") sieveReset();
+    if (tool === "find") newTarget(true);
+    if (tool === "missing") newPuzzle();
+    renderAll(); refreshPanel();
+  }
+  $("#prev").addEventListener("click", () => setPage(page - 1));
+  $("#next").addEventListener("click", () => setPage(page + 1));
+
+  // ---------- 1. skip count ----------
+  const STEPS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 25];
+  const MAX_LAYERS = 4;
+  const PATTERN = {
+    2: "Counting by 2 makes five straight columns. These are the even numbers: they end in 0, 2, 4, 6 or 8.",
+    3: "Counting by 3 makes stripes that slant down to the left. Add the digits of any of them and you get a multiple of 3, like 2 + 7 = 9.",
+    4: "Counting by 4 lands on every other even number. The columns repeat every 2 rows, because 20 is a multiple of 4.",
+    5: "Counting by 5 makes two straight columns: every number ends in 5 or 0.",
+    6: "Counting by 6 lands only on even numbers, because 6 = 2 × 3. The pattern repeats every 3 rows, because 30 is a multiple of 6.",
+    7: "Each jump of 7 is 3 short of a whole row of 10, so the marks slide 3 squares to the left each row.",
+    8: "Each jump of 8 is 2 short of a whole row of 10, so the marks slide 2 squares to the left each row.",
+    9: "Counting by 9: the tens go up while the ones go down. Each jump is 1 short of a whole row, so the marks make a diagonal.",
+    10: "Counting by 10 makes one straight column. Every number ends in 0, and only the tens change.",
+    11: "Counting by 11 makes a diagonal. Each jump is a whole row of 10 plus 1 more.",
+    12: "Each jump of 12 is a whole row of 10 plus 2 more, so the marks slide 2 squares to the right each row.",
+    25: "Counting by 25 takes four jumps to make 100. Every number ends in 25, 50, 75 or 00.",
+  };
+  // Last digit's color; the two-digit steps get a lighter tint so 12 and 2 (or 25 and 5) stay apart when stacked.
+  const stepColor = (s) => (s >= 10 ? `color-mix(in srgb, var(--d${s % 10}) 50%, #ffffff)` : `var(--d${s % 10})`);
+  const layers = [];
+  let anim = null, animId = 0;
+  const countOn = (s) => Math.floor(E() / s) - Math.floor((S() - 1) / s);
+
+  const stepsEl = $("#steps");
+  for (const s of STEPS) {
+    const b = document.createElement("button");
+    b.className = "nl-btn step nl-num"; b.dataset.s = s; b.textContent = s;
+    b.style.setProperty("--c", stepColor(s));
+    b.setAttribute("aria-pressed", "false");
+    b.setAttribute("aria-label", `Count by ${s}`);
+    b.addEventListener("click", () => pickStep(s));
+    stepsEl.appendChild(b);
+  }
+
+  function pickStep(s) {
+    const at = layers.findIndex((L) => L.s === s);
+    if (at >= 0) { // tapping a lit step again takes that layer away
+      if (anim && anim.L === layers[at]) stopAnim();
+      layers.splice(at, 1);
+      NL.sfx.pop(); renderAll(); refreshSkip();
+      return;
+    }
+    finishAnim();
+    if (layers.length >= MAX_LAYERS) layers.shift();
+    const L = { s, color: stepColor(s), cursor: S() - 1, done: false };
+    layers.push(L);
+    const id = ++animId;
+    anim = { L, id, i: 0, timer: 0, paused: false, intro: true };
+    renderAll(); refreshSkip();
+    Promise.race([Promise.resolve(NL.say("skip", "Let's skip count!")), sleep(1800)]).then(() => {
+      if (!anim || anim.id !== id) return;
+      anim.intro = false;
+      if (!anim.paused) tick();
+    });
+  }
+  function tick() {
+    if (!anim) return;
+    const L = anim.L;
+    const next = (Math.floor(L.cursor / L.s) + 1) * L.s;
+    if (next > E()) { L.done = true; anim = null; NL.sfx.chime(); refreshSkip(); return; }
+    L.cursor = next;
+    renderN(next); bounce(tileOf(next));
+    NL.sfx.blip(anim.i++);
+    if (next <= 100) NL.sayNumber(next);
+    anim.timer = setTimeout(tick, NL.calm() ? 350 : 700);
+  }
+  function stopAnim() { if (anim) { clearTimeout(anim.timer); anim = null; } }
+  function finishAnim() {
+    if (!anim) return;
+    anim.L.done = true; stopAnim();
+    if (tool === "skip") renderAll();
+    refreshSkip();
+  }
+  $("#skipPause").addEventListener("click", () => {
+    if (!anim) return;
+    if (anim.paused) { anim.paused = false; if (!anim.intro) tick(); }
+    else { anim.paused = true; clearTimeout(anim.timer); }
+    refreshSkip();
+  });
+  $("#skipAll").addEventListener("click", () => { if (anim) { finishAnim(); NL.sfx.whoosh(); } });
+  $("#skipClear").addEventListener("click", () => { stopAnim(); layers.length = 0; NL.sfx.pop(); renderAll(); refreshSkip(); });
+
+  function refreshSkip() {
+    for (const b of stepsEl.children) b.setAttribute("aria-pressed", String(layers.some((L) => L.s === Number(b.dataset.s))));
+    const pause = $("#skipPause");
+    pause.disabled = !anim;
+    pause.textContent = anim && anim.paused ? "Resume" : "Pause";
+    $("#skipAll").disabled = !anim;
+    $("#skipClear").disabled = !layers.length;
+    const top = layers[layers.length - 1];
+    $("#skipText").textContent = top ? PATTERN[top.s]
+      : "Pick a step. Every number you land on is a multiple of that step, and the chart lights it up.";
+    const chips = $("#skipChips");
+    chips.textContent = "";
+    for (const L of layers) {
+      const c = document.createElement("span"); c.className = "nl-chip lchip";
+      const sw = document.createElement("span"); sw.className = "sw"; sw.style.setProperty("--c", L.color);
+      c.append(sw, `${countOn(L.s)} multiples of ${L.s}`);
+      chips.appendChild(c);
+    }
+    const ov = $("#skipOverlap");
+    ov.hidden = layers.length < 2;
+    if (layers.length >= 2) ov.textContent = overlapText();
+  }
+  function overlapText() {
+    const a = layers[layers.length - 2].s, b = layers[layers.length - 1].s;
+    const lo = Math.min(a, b), hi = Math.max(a, b), m = lcm(a, b);
+    const common = [];
+    for (let n = Math.ceil(S() / m) * m; n <= E() && common.length < 3; n += m) common.push(n);
+    let t;
+    if (m === hi) t = `Every multiple of ${hi} is also a multiple of ${lo}, so all the ${hi}s are split tiles. They are common multiples of ${lo} and ${hi}.`;
+    else if (common.length) t = `Split tiles like ${andList(common)} are common multiples: they are in the ${a} count and the ${b} count. The smallest common multiple of ${a} and ${b} is ${m}.`;
+    else t = `The ${a} count and the ${b} count never meet on this page. Their smallest common multiple is ${m}.`;
+    if (layers.length > 2) {
+      let three = 0;
+      for (let n = S(); n <= E(); n++) if (layers.filter((L) => n % L.s === 0).length >= 3) three++;
+      if (three) t += ` Tiles with three colors are in three counts at once.`;
+    }
+    return t;
+  }
+
+  // ---------- 2. prime sieve ----------
+  const sieve = { page: -1, st: new Map(), steps: [], i: 0, active: 0, auto: 0, pend: [], pendTimer: 0, done: false, text: "", count: 0 };
+  const smallPrimes = (lim) => { const r = []; for (let p = 2; p * p <= lim; p++) if (NL.isPrime(p)) r.push(p); return r; };
+  const nextPrime = (p) => { let q = p + 1; while (!NL.isPrime(q)) q++; return q; };
+
+  function sieveReset() {
+    sieveStopAuto(); flushMarks(true);
+    sieve.page = page; sieve.st = new Map(); sieve.i = 0; sieve.active = 0; sieve.done = false; sieve.count = 0;
+    const ps = smallPrimes(E());
+    sieve.steps = (page === 0 ? [{ k: "one" }] : []).concat(ps.map((p) => ({ k: "p", p })), [{ k: "end", q: nextPrime(ps[ps.length - 1]) }]);
+    sieve.text = page === 0
+      ? "A prime number has exactly two factors: 1 and itself. This sieve, invented by Eratosthenes over 2,000 years ago, finds every prime up to 100."
+      : `To find the primes from ${S()} to ${E()}, cross out the multiples of ${andList(ps)}. Every number left over is prime.`;
+  }
+  /** Mark numbers one at a time (instantly in calm mode). */
+  function animateMarks(nums, make, sound) {
+    flushMarks();
+    if (NL.calm() || !nums.length) { for (const n of nums) { sieve.st.set(n, make(n)); renderN(n); } return; }
+    const per = Math.max(12, Math.min(55, 1100 / nums.length));
+    sieve.pend = nums.map((n) => ({ n, v: make(n) }));
+    let k = 0;
+    const run = () => {
+      const it = sieve.pend.shift();
+      if (!it) { sieve.pendTimer = 0; return; }
+      sieve.st.set(it.n, it.v); renderN(it.n);
+      if (sound) sound(k);
+      k++;
+      sieve.pendTimer = setTimeout(run, per);
+    };
+    run();
+  }
+  function flushMarks(discard) {
+    clearTimeout(sieve.pendTimer); sieve.pendTimer = 0;
+    if (!discard) for (const { n, v } of sieve.pend) { sieve.st.set(n, v); if (tool === "sieve") renderN(n); }
+    sieve.pend = [];
+  }
+  function sieveNext() {
+    if (sieve.done) return;
+    flushMarks();
+    const step = sieve.steps[sieve.i++];
+    const s0 = S(), e0 = E();
+    const prevActive = sieve.active;
+    sieve.active = 0;
+    if (step.k === "one") {
+      sieve.st.set(1, { s: "one", c: "var(--d0)" });
+      NL.sfx.clunk();
+      sieve.text = "1 is not prime, because it has only one factor: 1.";
+    } else if (step.k === "p") {
+      const p = step.p, c = NL.colorOf(p);
+      const mults = [];
+      for (let m = Math.max(2 * p, Math.ceil(s0 / p) * p); m <= e0; m += p) mults.push(m);
+      const fresh = mults.filter((m) => !sieve.st.has(m));
+      const ex = mults.slice(0, 3).join(", ");
+      if (page === 0) {
+        sieve.st.set(p, { s: "prime", c }); sieve.active = p;
+        const prevP = sieve.steps[sieve.i - 2] && sieve.steps[sieve.i - 2].k === "p" ? sieve.steps[sieve.i - 2].p : 1;
+        const skipped = [];
+        for (let k = prevP + 1; k < p; k++) skipped.push(k);
+        sieve.text = skipped.length
+          ? `${andList(skipped)} ${skipped.length > 1 ? "are" : "is"} already crossed out, so ${p} is the next prime: circle it, then cross out ${ex} and its other multiples.`
+          : `${p} is prime: circle it, then cross out ${ex} and every other multiple of ${p}.`;
+      } else {
+        sieve.text = fresh.length
+          ? `Cross out ${ex} and the other multiples of ${p} on this page, because ${p} is a factor of each one.`
+          : `The multiples of ${p} on this page, like ${mults[0]}, were already crossed out.`;
+      }
+      NL.sayNumber(p);
+      animateMarks(fresh, () => ({ s: "x", c }), (k) => { if (k % 2 === 0) NL.sfx.tick(); });
+    } else {
+      const rest = [];
+      for (let n = Math.max(2, s0); n <= e0; n++) if (!sieve.st.has(n)) rest.push(n);
+      for (const [n, v] of sieve.st) if (v.s === "prime" && onPage(n)) sieve.count++;
+      sieve.count += rest.length;
+      sieve.done = true;
+      const q = step.q;
+      sieve.text = `${q} × ${q} = ${q * q}, which is past ${e0}, so every number left is prime.`;
+      animateMarks(rest, (n) => ({ s: "prime", c: NL.colorOf(n) }), (k) => NL.sfx.blip(k));
+      NL.sfx.yay();
+      setTimeout(() => { if (sieve.done && tool === "sieve") NL.say("prime", "Those are prime numbers!"); }, 700);
+      NL.confetti(2600);
+      sieveStopAuto();
+    }
+    if (prevActive) renderN(prevActive);
+    if (tool === "sieve") { renderN(1); if (sieve.active) { renderN(sieve.active); bounce(tileOf(sieve.active)); } }
+    refreshSieve();
+  }
+  function sieveStopAuto() { if (sieve.auto) { clearInterval(sieve.auto); sieve.auto = 0; } refreshSieveButtons(); }
+  $("#sieveNext").addEventListener("click", () => { sieveStopAuto(); sieveNext(); });
+  $("#sieveAuto").addEventListener("click", () => {
+    if (sieve.auto) { sieveStopAuto(); return; }
+    if (sieve.done) { sieveReset(); renderAll(); }
+    sieveNext();
+    if (!sieve.done) sieve.auto = setInterval(() => { if (sieve.done) sieveStopAuto(); else sieveNext(); }, 2400);
+    refreshSieveButtons();
+  });
+  $("#sieveReset").addEventListener("click", () => { sieveReset(); NL.sfx.whoosh(); renderAll(); refreshSieve(); });
+
+  function refreshSieveButtons() {
+    const auto = $("#sieveAuto");
+    auto.setAttribute("aria-pressed", String(!!sieve.auto));
+    auto.textContent = sieve.auto ? "Pause" : "Auto";
+    $("#sieveNext").disabled = sieve.done;
+    $("#sieveReset").disabled = sieve.i === 0;
+  }
+  function refreshSieve() {
+    refreshSieveButtons();
+    $("#sieveText").textContent = sieve.text;
+    const pr = $("#sieveProgress");
+    pr.textContent = "";
+    sieve.steps.forEach((_, i) => { const d = document.createElement("i"); if (i < sieve.i) d.className = "on"; pr.appendChild(d); });
+    const win = $("#sieveWin");
+    win.hidden = !sieve.done;
+    if (sieve.done) {
+      win.textContent = "";
+      const line = document.createElement("span"), n = document.createElement("span");
+      NL.colorDigits(n, sieve.count); line.append(n, " primes!");
+      const sm = document.createElement("small"); sm.textContent = `from ${S()} to ${E()}`;
+      win.append(line, sm);
+    }
+  }
+
+  // ---------- 3. find it ----------
+  const find = { page: -1, target: 0, done: false, hintRow: 0, count: 0, text: "" };
+  function newTarget(speak) {
+    let t;
+    do { t = NL.randBetween(S(), E()); } while (t === find.target);
+    find.page = page; find.target = t; find.done = false; find.hintRow = 0;
+    find.text = "Listen, then tap that number on the chart.";
+    if (speak) NL.sayNumber(t);
+    if (tool === "find") renderAll();
+    refreshFind();
+  }
+  function onFind(n, el) {
+    if (find.done) { NL.sayNumber(n); bounce(el); return; }
+    if (n === find.target) {
+      find.done = true; find.hintRow = 0; find.count++;
+      find.text = `You found ${n}!`;
+      NL.sfx.chime(); NL.say("found", "You found it!");
+      renderAll(); bounce(tileOf(n));
+    } else {
+      NL.sfx.soft();
+      const t = find.target, r = rowStart(t);
+      find.hintRow = r;
+      find.text = rowStart(n) === r
+        ? `That one is ${n}. ${t} is in this same row, a little to the ${t < n ? "left" : "right"}.`
+        : `That one is ${n}. ${t} is in the row that starts with ${r}.`;
+      renderAll();
+    }
+    refreshFind();
+  }
+  function refreshFind() {
+    const fn = $("#findNum");
+    if (find.target) { NL.colorDigits(fn, find.target); fn.dataset.n = find.target; }
+    $("#findText").textContent = find.text;
+    $("#foundCount").textContent = find.count;
+    $("#findNew").textContent = find.done ? "Next number" : "New number";
+  }
+  $("#findNew").addEventListener("click", () => newTarget(true));
+  $("#findHear").addEventListener("click", () => { if (find.target) NL.sayNumber(find.target); });
+
+  // ---------- 4. missing numbers ----------
+  const BLANKS = 8;
+  const miss = { page: -1, blanks: new Set(), filled: new Set(), sel: 0, choices: new Map(), wrong: new Map(), done: false, text: "" };
+  function newPuzzle() {
+    miss.page = page; miss.blanks = new Set(); miss.filled = new Set(); miss.sel = 0;
+    miss.choices = new Map(); miss.wrong = new Map(); miss.done = false;
+    while (miss.blanks.size < BLANKS) miss.blanks.add(NL.randBetween(S(), E()));
+    miss.text = `${BLANKS} numbers are hiding. Tap a blank square, then pick the number that belongs there.`;
+    if (tool === "missing") renderAll();
+    refreshMiss();
+  }
+  function makeChoices(n) {
+    const ok = (x) => x >= S() && x <= E() && x !== n;
+    const near = [n - 1, n + 1, n - 10, n + 10].filter(ok);
+    const far = [n - 2, n + 2, n - 11, n + 11, n - 9, n + 9].filter(ok);
+    const pick = [];
+    while (pick.length < 2 && near.length) pick.push(near.splice(NL.randInt(near.length) - 1, 1)[0]);
+    while (pick.length < 2 && far.length) pick.push(far.shift());
+    return shuffle([n, ...pick]);
+  }
+  function neighborHint(n) {
+    const free = (x) => onPage(x) && !miss.blanks.has(x);
+    if (free(n - 1) && rowStart(n - 1) === rowStart(n)) return `The number just before it is ${n - 1}.`;
+    if (free(n + 1) && rowStart(n + 1) === rowStart(n)) return `The number just after it is ${n + 1}.`;
+    if (free(n - 10)) return `The number above it is ${n - 10}.`;
+    if (free(n + 10)) return `The number below it is ${n + 10}.`;
+    return `It is in the row that starts with ${rowStart(n)}.`;
+  }
+  function onMiss(n, el) {
+    if (miss.blanks.has(n)) {
+      miss.sel = n;
+      if (!miss.choices.has(n)) miss.choices.set(n, makeChoices(n));
+      NL.sfx.tick();
+      miss.text = "Which number goes in the blue square?";
+      renderAll(); bounce(tileOf(n));
+    } else { NL.sayNumber(n); bounce(el); return; }
+    refreshMiss();
+  }
+  function pickChoice(v) {
+    const n = miss.sel;
+    if (!n) return;
+    if (v === n) {
+      miss.blanks.delete(n); miss.filled.add(n); miss.sel = 0;
+      NL.sfx.pop(); NL.sayNumber(n);
+      if (!miss.blanks.size) {
+        miss.done = true;
+        miss.text = "Every square is filled. The chart is whole again.";
+        NL.sfx.yay(); NL.confetti(2200);
+        setTimeout(() => { if (miss.done && tool === "missing") NL.say("great", "Great thinking!"); }, 800);
+      } else {
+        const left = miss.blanks.size;
+        miss.text = `Yes, ${n} goes there. ${left} more ${left === 1 ? "square is" : "squares are"} blank.`;
+      }
+      renderAll(); bounce(tileOf(n));
+    } else {
+      NL.sfx.soft();
+      if (!miss.wrong.has(n)) miss.wrong.set(n, new Set());
+      miss.wrong.get(n).add(v);
+      miss.text = `Not ${v}. ${neighborHint(n)} Try another one.`;
+    }
+    refreshMiss();
+  }
+  function refreshMiss() {
+    $("#missText").textContent = miss.text;
+    $("#missCount").textContent = miss.filled.size;
+    const box = $("#choices");
+    box.hidden = !miss.sel;
+    box.textContent = "";
+    if (miss.sel) {
+      const wrong = miss.wrong.get(miss.sel) || new Set();
+      for (const v of miss.choices.get(miss.sel)) {
+        const b = document.createElement("button");
+        b.className = "choice nl-num"; b.dataset.v = v;
+        NL.colorDigits(b, v);
+        b.disabled = wrong.has(v);
+        b.addEventListener("click", () => pickChoice(v));
+        box.appendChild(b);
+      }
+    }
+    const win = $("#missWin");
+    win.hidden = !miss.done;
+    if (miss.done) {
+      win.textContent = "";
+      const line = document.createElement("span"), n = document.createElement("span");
+      NL.colorDigits(n, BLANKS); line.append(n, " found!");
+      win.append(line);
+    }
+  }
+  $("#missNew").addEventListener("click", () => { newPuzzle(); NL.sfx.whoosh(); });
+
+  // ---------- 5. paint ----------
+  const paint = new Map();
+  let paintColor = 6, drag = null;
+  const swEl = $("#swatches");
+  for (let d = 0; d <= 9; d++) {
+    const b = document.createElement("button");
+    b.className = "swatch"; b.dataset.d = d; b.textContent = d;
+    b.style.setProperty("--c", NL.digitVar(d));
+    b.setAttribute("aria-label", `Color ${d}`);
+    b.addEventListener("click", () => { paintColor = d; NL.sfx.blip(d); refreshPaint(); });
+    swEl.appendChild(b);
+  }
+  function refreshPaint() { for (const b of swEl.children) b.setAttribute("aria-pressed", String(Number(b.dataset.d) === paintColor)); }
+  function paintTap(n, el) {
+    const erase = paint.get(n) === paintColor;
+    if (erase) paint.delete(n); else paint.set(n, paintColor);
+    renderN(n); bounce(el); NL.sfx.pop(); NL.sayNumber(n);
+    return erase;
+  }
+  grid.addEventListener("pointerdown", (e) => {
+    if (tool !== "paint") return;
+    const el = e.target.closest(".tile");
+    if (!el) return;
+    e.preventDefault();
+    const n = Number(el.dataset.n);
+    drag = { erase: paintTap(n, el), last: n };
+    try { grid.setPointerCapture(e.pointerId); } catch { /* fine */ }
+  });
+  grid.addEventListener("pointermove", (e) => {
+    if (!drag || tool !== "paint") return;
+    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    const el = hit && hit.closest(".tile");
+    if (!el) return;
+    const n = Number(el.dataset.n);
+    if (n === drag.last) return;
+    drag.last = n;
+    if (drag.erase) paint.delete(n); else paint.set(n, paintColor);
+    renderN(n); NL.sfx.tick();
+  });
+  const endDrag = () => { drag = null; };
+  grid.addEventListener("pointerup", endDrag);
+  grid.addEventListener("pointercancel", endDrag);
+  $("#paintClear").addEventListener("click", () => { paint.clear(); NL.sfx.whoosh(); renderAll(); });
+
+  // ---------- tile taps ----------
+  grid.addEventListener("click", (e) => {
+    const el = e.target.closest(".tile");
+    if (!el) return;
+    const n = Number(el.dataset.n);
+    if (tool === "find") onFind(n, el);
+    else if (tool === "missing") onMiss(n, el);
+    else if (tool === "paint") { if (e.detail === 0) paintTap(n, el); } // keyboard; pointer painting happens on pointerdown
+    else { NL.sayNumber(n); bounce(el); }
+  });
+
+  // ---------- tools ----------
+  function refreshPanel() {
+    if (tool === "skip") refreshSkip();
+    else if (tool === "sieve") refreshSieve();
+    else if (tool === "find") refreshFind();
+    else if (tool === "missing") refreshMiss();
+    else refreshPaint();
+  }
+  function setTool(t, user) {
+    if (t !== "skip") finishAnim();
+    if (t !== "sieve") { sieveStopAuto(); flushMarks(); }
+    tool = t; NL.store.set("chart-tool", t);
+    for (const b of document.querySelectorAll(".tools .nl-btn")) b.setAttribute("aria-pressed", String(b.dataset.tool === t));
+    for (const id of TOOLS) $("#p-" + id).hidden = id !== t;
+    grid.classList.toggle("painting", t === "paint");
+    if (t === "sieve" && sieve.page !== page) sieveReset();
+    if (t === "find") { if (find.page !== page) newTarget(user); else if (user && !find.done) NL.sayNumber(find.target); }
+    if (t === "missing" && miss.page !== page) newPuzzle();
+    renderAll(); refreshPanel();
+  }
+  for (const b of document.querySelectorAll(".tools .nl-btn")) {
+    b.addEventListener("click", () => { if (b.dataset.tool !== tool) { NL.sfx.tick(); setTool(b.dataset.tool, true); } });
+  }
+
+  document.addEventListener("pointerdown", () => {
+    NL.preload(["skip", "found", "prime", "great", ...Array.from({ length: 30 }, (_, i) => "n" + (i + 1))]);
+  }, { once: true });
+
+  paintPager();
+  setTool(tool, false);
+})();
+</script>
+</body>
+</html>
