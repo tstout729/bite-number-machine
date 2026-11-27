@@ -123,6 +123,10 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--d6); o
 .strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
 .cell { height: 1.12em; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
 .cell.q { color: #ffffff; opacity: 0.85; }
+.pctsign { display: none; font-family: var(--font-display); font-weight: 700; font-size: clamp(54px, 17vw, 100px); line-height: 1; color: #ffffff; opacity: 0.85; padding-left: 0.06em; }
+.window.pct .pctsign { display: block; }
+.window.pct.wide .reels { font-size: clamp(70px, 20vw, 136px); }
+.window.pct.wide .pctsign { font-size: clamp(46px, 13vw, 88px); }
 .readout { text-align: center; color: #c9d1f5; font-family: var(--font-display); font-weight: 600; font-size: 18px; min-height: 1.3em; letter-spacing: 0.01em; }
 
 /* the big button */
@@ -163,6 +167,13 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--d6); o
   content: ""; position: absolute; left: 10px; right: 10px; top: 12px; height: 5px;
   background: radial-gradient(circle at 3px 2.5px, #1c2448 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 3px) 2.5px, #1c2448 2.5px, transparent 3px);
 }
+.grids { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.hgrid { display: grid; grid-template-columns: repeat(10, var(--cs)); grid-auto-rows: var(--cs); gap: var(--cg); padding: var(--cg); border-radius: 8px; background: var(--bg); border: 2px solid var(--line); --cs: 22px; --cg: 3px; }
+.hgrid.small { --cs: 6px; --cg: 1px; border-radius: 5px; }
+.hgrid i { border-radius: 3px; background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
+.hgrid.small i { border-radius: 1px; }
+.hgrid i.on { background: var(--c); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
+.hgrid.small i.on { box-shadow: none; }
 .empty { color: var(--muted); font-weight: 700; font-size: 16px; max-width: 34ch; }
 .facts { display: flex; flex-wrap: wrap; gap: 8px; }
 .fact { font-family: var(--font-display); font-weight: 600; font-size: 16px; padding: 7px 12px; border-radius: 12px; background: var(--bg); border: 2px solid var(--line); font-variant-numeric: tabular-nums; }
@@ -178,6 +189,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--d6); o
   flex: none; width: 52px; height: 52px; border-radius: 50%; background: var(--surface); border: 3px solid var(--line);
   display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums;
 }
+.plate.pct4 { font-size: 14px; }
+.plate.pct5 { font-size: 12px; }
 .plate.full { border-color: var(--c); background: var(--c); color: #1c2448; }
 .plate.bonus { border-style: dashed; }
 .plate.next { border-style: dashed; border-color: var(--muted); }
@@ -232,7 +245,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
 
   <section class="machine" id="machine" aria-label="Number machine">
     <div class="lights" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-    <div class="window" id="window" title="Tap to hear the number again"><div class="reels" id="reels"></div></div>
+    <div class="window" id="window" title="Tap to hear the number again"><div class="reels" id="reels"></div><div class="pctsign" id="pctSign" aria-hidden="true">%</div></div>
     <div class="readout" id="readout">Numbers 1 to 100</div>
   </section>
 
@@ -243,7 +256,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
 
   <section class="blocks" id="blocks" aria-live="polite">
     <h2 id="blocksTitle">What does your number look like?</h2>
-    <div class="groups" id="groups"><p class="empty">Push the yellow button. Your number will show up here as blocks: hundreds, tens and ones.</p></div>
+    <div class="groups" id="groups"></div>
     <div class="facts" id="facts"></div>
   </section>
 
@@ -278,6 +291,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
       <p>The button fills up while he chews, then says "Ready!" Helps slow down fast eating.</p>
     </div>
     <div class="toggles">
+      <label class="toggle"><span>Show as percentages<small>48 becomes 48%, shown on a grid of 100 squares</small></span><input type="checkbox" id="optPercent"></label>
       <label class="toggle"><span>Say the number out loud</span><input type="checkbox" id="optVoice"></label>
       <label class="toggle"><span>Machine sounds</span><input type="checkbox" id="optSound"></label>
       <label class="toggle"><span>Calm mode<small>Shorter, gentler spins and no confetti</small></span><input type="checkbox" id="optCalm"></label>
@@ -318,7 +332,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   const DIGIT = (d) => `var(--d${d})`;
 
   // ---------- saved state (per device; page works without it) ----------
-  const DEFAULTS = { max: 100, goal: 0, wait: 0, voice: true, sound: true, calm: false, noRepeat: false };
+  const DEFAULTS = { max: 100, goal: 0, wait: 0, voice: true, sound: true, calm: false, noRepeat: false, percent: true };
   const load = (k, fallback) => { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? fallback; } catch { return fallback; } };
   const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage blocked */ } };
   let S = Object.assign({}, DEFAULTS, load("bnm-settings", {}));
@@ -326,6 +340,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   if (!meal || !Array.isArray(meal.bites) || Date.now() - (meal.at || 0) > 4 * 3600e3) meal = { bites: [], at: Date.now(), partied: false };
   const persist = () => { save("bnm-settings", S); meal.at = Date.now(); save("bnm-meal", meal); };
 
+  const fmt = (n) => n.toLocaleString("en-US") + (S.percent ? "%" : "");
   const calm = () => S.calm || matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---------- fair random numbers ----------
@@ -364,7 +379,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
     return p;
   }
   function preloadVoice() {
-    const keys = ["done", "ready", "hello"];
+    const keys = ["done", "ready", "hello", "percent"];
     for (let n = 1; n <= Math.min(100, S.max); n++) keys.push("n" + n);
     let i = 0;
     const next = () => { if (i < keys.length) getClip(keys[i++]).then(next); };
@@ -377,17 +392,24 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
     } catch { }
   }
   let voiceSrc = null;
-  async function say(key, fallbackText) {
-    if (!S.voice || !ctx) return;
+  let sayId = 0;
+  async function say(key, fallbackText) {   // resolves true when the clip played to the end
+    if (!S.voice || !ctx) return false;
+    const id = ++sayId;
     const buf = await getClip(key);
-    if (!buf) { browserSay(fallbackText); return; }
+    if (id !== sayId) return false;
+    if (!buf) { browserSay(fallbackText); return false; }
     try { voiceSrc && voiceSrc.stop(); } catch { }
     const s = ctx.createBufferSource(); s.buffer = buf;
     const g = ctx.createGain(); g.gain.value = 1.0;
     s.connect(g).connect(master); s.start(); voiceSrc = s;
+    return new Promise((res) => { s.onended = () => res(id === sayId && voiceSrc === s); });
   }
-  function sayNumber(n) {
-    if (n <= 100) say("n" + n, String(n)); else if (S.voice) browserSay(String(n));
+  async function sayNumber(n) {
+    if (n > 100) { if (S.voice) browserSay(S.percent ? `${n} percent` : String(n)); return; }
+    const pct = S.percent;
+    const finished = await say("n" + n, pct ? `${n} percent` : String(n));
+    if (pct && finished) say("percent", "percent");
   }
   function tone(freq, dur, vol, type = "sine", when = 0) {
     if (!S.sound || !ctx) return;
@@ -412,6 +434,8 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   function buildReels(showQ) {
     reelCount = String(S.max).length;
     reelsEl.innerHTML = "";
+    $("window").classList.toggle("pct", S.percent);
+    $("window").classList.toggle("wide", reelCount > 3);
     for (let i = 0; i < reelCount; i++) {
       const r = document.createElement("div"); r.className = "reel";
       const s = document.createElement("div"); s.className = "strip";
@@ -517,9 +541,79 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
     return f.slice(0, 5);
   }
 
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  const NAMED = { 100: "100% means all of it!", 50: "50% is one half", 25: "25% is one quarter", 75: "75% is three quarters",
+    20: "20% is one fifth", 10: "10% is one tenth", 200: "200% is double", 1000: "1000% is ten times as much" };
+  function pctFacts(n) {
+    const f = [];
+    if (NAMED[n]) f.push({ t: NAMED[n], star: true });
+    if (n > 100 && n !== 200 && n !== 1000) f.push({ t: `More than all of it: ${n / 100} times as much`, star: true });
+    if (n === S.max && n !== 100 && n !== 1000) f.push({ t: `The biggest percent it can make!`, star: true });
+    const g = gcd(n, 100);
+    if (n <= 100) f.push({ t: g === 1 || g === 100 ? `${n} out of every 100` : `${n} out of 100 = ${n / g} out of ${100 / g}` });
+    else f.push({ t: `Half of it: ${n / 2}%` });
+    f.push({ t: `As a decimal: ${n / 100}` });
+    if (n < 100) f.push({ t: `${n}% + ${100 - n}% = 100%` });
+    if (n <= 500) f.push({ t: `Double it: ${n * 2}%` });
+    return f.slice(0, 5);
+  }
+  function hundredGrid(filled, color, small, units) {
+    const g = document.createElement("div"); g.className = "hgrid" + (small ? " small" : "");
+    for (let i = 0; i < 100; i++) {
+      const c = document.createElement("i");
+      if (i < filled) { c.className = "on"; c.style.setProperty("--c", color(i)); units && units.push(c); }
+      g.appendChild(c);
+    }
+    return g;
+  }
+  function renderPercent(n, animate) {
+    const groups = $("groups");
+    groups.innerHTML = "";
+    $("blocksTitle").innerHTML = `<span style="color:${DIGIT(n % 10)}">${n}%</span> is ${words(n)} percent`;
+    const units = [];
+    const wrap = document.createElement("div"); wrap.className = "group";
+    const grids = document.createElement("div"); grids.className = "grids";
+    let cap;
+    if (n <= 100) {
+      const T = Math.floor(n / 10), O = n % 10;
+      // full rows of ten take the tens color, the leftover squares take the ones color, like the blocks
+      const color = n === 100 ? () => DIGIT(1) : (i) => (i < T * 10 ? DIGIT(T) : DIGIT(O));
+      grids.appendChild(hundredGrid(n, color, false, units));
+      cap = n === 100 ? "100 out of 100 squares: the whole grid" : `${n} out of 100 squares`;
+    } else {
+      const H = Math.floor(n / 100), R = n % 100;
+      const col = () => DIGIT(H % 10 || 1);
+      for (let k = 0; k < H; k++) { const gr = hundredGrid(100, col, true, null); grids.appendChild(gr); units.push(gr); }
+      if (R) { const gr = hundredGrid(R, () => DIGIT(R % 10 || Math.floor(R / 10)), true, null); grids.appendChild(gr); units.push(gr); }
+      cap = R ? `${plural(H, "whole grid", "whole grids")} and ${R} more squares` : plural(H, "whole grid", "whole grids");
+    }
+    wrap.appendChild(grids);
+    const c = document.createElement("div"); c.className = "cap"; c.textContent = cap; c.style.color = DIGIT(n % 10);
+    wrap.appendChild(c); groups.appendChild(wrap);
+    const fx = $("facts"); fx.innerHTML = "";
+    for (const f of pctFacts(n)) { const e = document.createElement("span"); e.className = "fact" + (f.star ? " star" : ""); e.textContent = f.t; fx.appendChild(e); }
+    if (animate && !calm()) {
+      // pop squares in row by row (ten at a time) so 100 squares don't take forever
+      const batches = [];
+      if (n <= 100) for (let i = 0; i < units.length; i += 10) batches.push(units.slice(i, i + 10));
+      else units.forEach((u) => batches.push([u]));
+      batches.forEach((b, i) => {
+        b.forEach((u) => { u.style.opacity = "0"; });
+        setTimeout(() => {
+          b.forEach((u) => {
+            u.style.opacity = "";
+            u.animate([{ transform: "scale(0.2)", opacity: 0 }, { transform: "scale(1.15)", opacity: 1, offset: 0.7 }, { transform: "scale(1)" }], { duration: 240, easing: "ease-out" });
+          });
+          blip(i);
+        }, 250 + i * 120);
+      });
+    }
+  }
+
   // ---------- blocks ----------
   function plural(k, one, many) { return `${k} ${k === 1 ? one : many}`; }
   function renderBlocks(n, animate) {
+    if (S.percent) { renderPercent(n, animate); return; }
     const groups = $("groups");
     groups.innerHTML = "";
     $("blocksTitle").innerHTML = `<span style="color:${DIGIT(n % 10)}">${n}</span> is ${words(n)}`;
@@ -576,7 +670,9 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   }
   function renderEmptyBlocks() {
     $("blocksTitle").textContent = "What does your number look like?";
-    $("groups").innerHTML = `<p class="empty">Push the yellow button. Your number will show up here as blocks: hundreds, tens and ones.</p>`;
+    $("groups").innerHTML = S.percent
+      ? `<p class="empty">Push the yellow button. Your percent will show up here as colored squares on a grid of 100.</p>`
+      : `<p class="empty">Push the yellow button. Your number will show up here as blocks: hundreds, tens and ones.</p>`;
     $("facts").innerHTML = "";
   }
 
@@ -585,21 +681,25 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
     const row = $("plateRow"); row.innerHTML = "";
     const b = meal.bites, total = b.reduce((a, x) => a + x, 0);
     $("biteNo").textContent = S.goal ? `${b.length} of ${S.goal}` : b.length;
-    $("total").textContent = `Total ${total.toLocaleString("en-US")}`;
+    $("total").textContent = `Total ${fmt(total)}`;
     $("platesTitle").textContent = S.goal ? "Bite plates" : "Your numbers tonight";
     const slots = Math.max(S.goal, b.length + (S.goal ? 0 : 1));
     for (let i = 0; i < slots; i++) {
       const p = document.createElement("div"); p.className = "plate";
-      if (i < b.length) { p.classList.add("full"); p.style.setProperty("--c", DIGIT(b[i] % 10)); p.textContent = b[i]; if (S.goal && i >= S.goal) p.classList.add("bonus"); }
+      if (i < b.length) {
+        p.classList.add("full"); p.style.setProperty("--c", DIGIT(b[i] % 10)); p.textContent = S.percent ? b[i] + "%" : b[i];
+        if (p.textContent.length >= 4) p.classList.add(p.textContent.length >= 5 ? "pct5" : "pct4");
+        if (S.goal && i >= S.goal) p.classList.add("bonus");
+      }
       else if (i === b.length) { p.classList.add("next"); p.textContent = i + 1; p.style.color = "var(--muted)"; }
       else { p.textContent = i + 1; p.style.color = "var(--line)"; }
-      p.setAttribute("aria-label", i < b.length ? `Bite ${i + 1}: ${b[i]}` : `Bite ${i + 1}`);
+      p.setAttribute("aria-label", i < b.length ? `Bite ${i + 1}: ${fmt(b[i])}` : `Bite ${i + 1}`);
       row.appendChild(p);
     }
     if (S.goal && b.length >= S.goal) { const p = document.createElement("div"); p.className = "plate next"; p.textContent = "+"; row.appendChild(p); }
     const cur = row.children[Math.min(b.length, row.children.length - 1)];
     if (cur) row.scrollLeft = Math.max(0, cur.offsetLeft - row.clientWidth + 70);
-    $("readout").textContent = `Numbers 1 to ${S.max.toLocaleString("en-US")}`;
+    $("readout").textContent = S.percent ? `Percents from 1% to ${fmt(S.max)}` : `Numbers 1 to ${fmt(S.max)}`;
   }
 
   // ---------- the main button ----------
@@ -639,7 +739,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
     $("machine").classList.remove("spinning"); $("machine").classList.add("won");
     chime();
     setTimeout(() => sayNumber(n), 120);
-    $("sr").textContent = `${n}`;
+    $("sr").textContent = fmt(n);
     meal.bites.push(n); persist();
     renderBlocks(n, true); renderPlates();
     busy = false;
@@ -663,8 +763,8 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   function party() {
     const b = meal.bites;
     $("pBites").textContent = b.length;
-    $("pTotal").textContent = b.reduce((a, x) => a + x, 0).toLocaleString("en-US");
-    $("pBig").textContent = Math.max(...b); $("pSmall").textContent = Math.min(...b);
+    $("pTotal").textContent = fmt(b.reduce((a, x) => a + x, 0));
+    $("pBig").textContent = fmt(Math.max(...b)); $("pSmall").textContent = fmt(Math.min(...b));
     $("partyWrap").hidden = false;
     say("done", "All done! Great eating!");
     if (S.sound && ctx) [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => tone(midi(m), 0.5, 0.09, "sine", 0.6 + i * 0.09));
@@ -718,7 +818,7 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   function syncSeg(id, val) { $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.v) === val))); }
   function syncParent() {
     syncSeg("segMax", S.max); syncSeg("segGoal", S.goal); syncSeg("segWait", S.wait);
-    $("optVoice").checked = S.voice; $("optSound").checked = S.sound; $("optCalm").checked = S.calm; $("optNoRepeat").checked = S.noRepeat;
+    $("optVoice").checked = S.voice; $("optSound").checked = S.sound; $("optCalm").checked = S.calm; $("optNoRepeat").checked = S.noRepeat; $("optPercent").checked = S.percent;
     $("undo").disabled = meal.bites.length === 0;
   }
   function openParent() { syncParent(); $("parentWrap").hidden = false; $("closeParent").focus(); }
@@ -733,6 +833,13 @@ canvas.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-
   bindSeg("segWait", "wait");
   [["optVoice", "voice"], ["optSound", "sound"], ["optCalm", "calm"], ["optNoRepeat", "noRepeat"]].forEach(([id, key]) =>
     $(id).addEventListener("change", (e) => { S[key] = e.target.checked; persist(); }));
+  $("optPercent").addEventListener("change", (e) => {
+    S.percent = e.target.checked; persist();
+    buildReels();
+    const last = meal.bites[meal.bites.length - 1];
+    if (last && last <= S.max) renderBlocks(last, false); else renderEmptyBlocks();
+    renderPlates();
+  });
   $("undo").addEventListener("click", () => {
     meal.bites.pop(); if (S.goal && meal.bites.length < S.goal) meal.partied = false; persist();
     const last = meal.bites[meal.bites.length - 1];
